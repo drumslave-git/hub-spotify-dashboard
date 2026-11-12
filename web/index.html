@@ -347,7 +347,7 @@
   function renderPlayer(p) {
     player = p;
     var ready = p && p.connected;
-    if (ready) startSpotifyPlayer(p.player_name);
+    if (p && p.local && p.local.state !== 'off') startSound();
     var active = ready && p.active;
     var show = active ? p : (ready && p.last) || null;
 
@@ -363,17 +363,24 @@
       setArt(show ? show.art : null);
       $('pTitle').textContent = show ? show.title : 'Nothing played yet';
       $('pArtist').textContent = show ? show.artist : '';
+      var local = p.local || { state: 'off' };
       note(p.error ? p.error
            : active ? (p.device ? 'Playing on ' + p.device : '')
            : p.local_ready ? 'Tap play to pick up where you left off'
-           : 'Playing here needs the HTTPS setup',
+           : local.state === 'pairing' ? 'To play here: spotify.com/pair, code ' + local.pairing.code
+           : local.state === 'off' ? 'This server has no player of its own'
+           : local.state === 'ready' ? 'Connecting the sound…'
+           : 'The player is starting…',
            !!p.error);
       if (active && !p.playing) note(p.device ? 'Paused on ' + p.device : 'Paused');
+      // Music is meant to come out of this device, but the browser holds the
+      // sound back until the screen is touched.
+      if (active && p.playing && p.on_dashboard && soundBlocked()) note('Tap the screen to hear it here', true);
     }
 
     $('pToggleIcon').innerHTML = active && p.playing ? PAUSE : PLAY;
     // With nothing playing, play only works once this page can play by itself.
-    $('pToggle').disabled = !ready || (!active && !p.local_ready && !needTap);
+    $('pToggle').disabled = !ready || (!active && !p.local_ready);
     $('pPrev').disabled = !active;
     $('pNext').disabled = !active;
 
@@ -427,16 +434,11 @@
     holdUntil = Date.now() + 2500;
     if (params.get('demo')) return;
 
-    // Music playing in this page: act on the in-page player directly. Doing
-    // it inside the tap is also what lets the browser start sound.
-    if (sp) { try { sp.activateElement(); } catch (e) {} }
-    if (action === 'toggle' && sp && (needTap || (player.active && player.on_dashboard))) {
-      needTap = false;
-      alertUntil = 0;
-      (wasPlaying ? sp.pause() : sp.resume()).catch(function () {});
-      setTimeout(pollPlayer, 2600);
-      return;
-    }
+    // Being inside a tap is what lets the browser start sound.
+    unlockSound();
+    // Pausing or skipping music that plays here: cut the queued sound at once
+    // instead of letting the last half second trail on.
+    if (ctx && player.on_dashboard && action !== 'volume' && (action !== 'toggle' || wasPlaying)) cutSound(600);
     fetch('/api/player', { method: 'POST', body: JSON.stringify({ action: action, value: value }) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
@@ -452,131 +454,138 @@
   $('pVolDown').addEventListener('click', function () { command('volume', Math.max(0, player.volume - 6)); });
   $('pVolUp').addEventListener('click', function () { command('volume', Math.min(100, player.volume + 6)); });
 
-  // ------------------------------------------------- in-page Spotify player
-  // On a secure (https) page the dashboard is its own Spotify device, so music
-  // plays on the Hub without Spotify's own app taking over the screen.
-  var sp = null, sdkState = 'off', sdkDevice, sdkStarted = false, needTap = false;
+  // ------------------------------------------------- sound on this device
+  // The server runs the Spotify player; this page plays its sound. The audio
+  // arrives as plain 16-bit stereo samples and is queued on the Web Audio
+  // clock, so pausing and skipping can cut it off at once.
+  var RATE = 44100, LEAD = 0.25, MAX_AHEAD = 1.5, MIN_BYTES = RATE * 4 / 20;
+  var audio = { mode: 'off', state: 'off', connected: false, kb: 0, played: 0,
+                underruns: 0, drops: 0, reconnects: 0, level: 0 };
+  var ctx = null, gain = null, el = null, soundStarted = false;
+  var baseAt = 0, framesQueued = 0, lastChunk = 0, muteUntil = 0, sources = [];
+  var stash = new Uint8Array(0);
+  window.dashAudio = audio;   // readable from a debugging console
 
-  function startSpotifyPlayer(name) {
-    if (sdkStarted || params.get('demo')) return;
+  function startSound() {
+    if (soundStarted || params.get('demo')) return;
     // Desktop previews stay silent unless asked (?player=1).
     if (!/CrKey/.test(navigator.userAgent) && params.get('player') !== '1') return;
-    sdkStarted = true;
-    if (!window.isSecureContext) { sdkState = 'needs-https'; return; }
-    if (!navigator.requestMediaKeySystemAccess) { sdkState = 'no-drm-support'; return; }
-    sdkState = 'loading';
-
-    window.onSpotifyWebPlaybackSDKReady = function () {
-      try {
-        sp = new window.Spotify.Player({
-          name: name || 'Dashboard',
-          volume: 1,
-          getOAuthToken: function (cb) {
-            fetch('/api/spotify/token', { cache: 'no-store' })
-              .then(function (r) { return r.json(); })
-              .then(function (d) { if (d.token) cb(d.token); })
-              .catch(function () {});
-          }
-        });
-      } catch (e) { sdkState = 'error: ' + e.message; beat('sdk:' + sdkState); return; }
-
-      sp.addListener('ready', function (e) { sdkDevice = e.device_id; sdkState = 'ready'; beat('sdk:ready'); });
-      sp.addListener('not_ready', function () { sdkDevice = null; sdkState = 'not-ready'; beat('sdk:not-ready'); });
-      ['initialization_error', 'authentication_error', 'account_error', 'playback_error'].forEach(function (type) {
-        sp.addListener(type, function (e) {
-          var text = type + ': ' + (e && e.message);
-          if (type === 'initialization_error') {
-            // Spotify's player lives in a frame it adds itself; say what it got.
-            text += ' [frames: ' + [].map.call(document.querySelectorAll('iframe'), function (f) {
-              return (f.src || '').split('?')[0] + ' allow=' + (f.getAttribute('allow') || '-');
-            }).join('; ') + ']';
-          }
-          if (type !== 'playback_error') { sdkState = text; sdkDevice = null; }
-          beat('sdk:' + text);
-        });
-      });
-      sp.addListener('autoplay_failed', function () {
-        needTap = true;
-        note('Tap play to continue here', true);
-        beat('sdk:autoplay_failed');
-      });
-      // The in-page player knows its own state first; show it without waiting
-      // for the next poll.
-      sp.addListener('player_state_changed', function (st) {
-        var track = st && st.track_window && st.track_window.current_track;
-        if (!track || !player || !player.connected) return;
-        var images = (track.album && track.album.images) || [];
-        var best = images.reduce(function (a, b) { return (b.height || 0) > (a.height || 0) ? b : a; }, images[0] || {});
-        if (!st.paused) needTap = false;
-        player.active = true;
-        player.on_dashboard = true;
-        player.playing = !st.paused;
-        player.title = track.name;
-        player.artist = (track.artists || []).map(function (a) { return a.name; }).join(', ');
-        player.art = best.url || player.art;
-        player.device = name || 'Dashboard';
-        player.progress_ms = st.position;
-        player.duration_ms = st.duration;
-        player.at = Date.now() + offset;
-        if (player.volume == null) { player.volume = 100; player.can_volume = true; }
-        holdUntil = Date.now() + 1500;
-        renderPlayer(player);
-      });
-      sp.connect().then(function (ok) {
-        if (!ok) { sdkState = 'connect-failed'; beat('sdk:connect-failed'); }
-      });
+    soundStarted = true;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC || !window.ReadableStream || params.get('audio') === 'element') { startElement(); return; }
+    audio.mode = 'webaudio';
+    try { ctx = new AC({ sampleRate: RATE, latencyHint: 'playback' }); }
+    catch (e) { ctx = new AC(); }
+    gain = ctx.createGain();
+    gain.connect(ctx.destination);
+    audio.rate = ctx.sampleRate;
+    audio.state = ctx.state;
+    ctx.onstatechange = function () {
+      audio.state = ctx.state;
+      beat('audio:' + ctx.state);
+      if (player) renderPlayer(player);
     };
-
-    var s = document.createElement('script');
-    s.src = 'https://sdk.scdn.co/spotify-player.js';
-    s.onerror = function () { sdkState = 'sdk-load-failed'; beat('sdk:' + sdkState); };
-    document.head.appendChild(s);
+    readStream();
   }
 
-  // What protected playback this browser supports. Spotify's player needs
-  // Widevine with AAC; the result goes out with the heartbeat so it can be read
-  // on /api/debug for the device the page is actually running on.
-  var drm = null;
-  function probeDrm() {
-    if (drm || params.get('demo')) return;
-    if (!/CrKey/.test(navigator.userAgent) && params.get('player') !== '1') return;
-    if (!window.isSecureContext) { drm = { error: 'needs-https' }; return; }
-    if (!navigator.requestMediaKeySystemAccess) { drm = { error: 'no-drm-api' }; return; }
-    drm = {};
-    var systems = {
-      widevine: 'com.widevine.alpha',
-      playready: 'com.microsoft.playready',
-      castPlayready: 'com.chromecast.playready',
-      clearkey: 'org.w3.clearkey'
-    };
-    var aac = 'audio/mp4; codecs="mp4a.40.2"';
-    var cases = {
-      'aac': { audioCapabilities: [{ contentType: aac }] },
-      'aac-sw': { audioCapabilities: [{ contentType: aac, robustness: 'SW_SECURE_CRYPTO' }] },
-      'aac+video': {
-        audioCapabilities: [{ contentType: aac }],
-        videoCapabilities: [{ contentType: 'video/mp4; codecs="avc1.42E01E"' }]
-      },
-      'opus': { audioCapabilities: [{ contentType: 'audio/webm; codecs="opus"' }] },
-      'vorbis': { audioCapabilities: [{ contentType: 'audio/webm; codecs="vorbis"' }] },
-      'flac': { audioCapabilities: [{ contentType: 'audio/mp4; codecs="flac"' }] }
-    };
-    var jobs = [];
-    Object.keys(systems).forEach(function (system) {
-      drm[system] = [];
-      Object.keys(cases).forEach(function (name) {
-        var config = Object.assign({ initDataTypes: ['cenc'] }, cases[name]);
-        var job;
-        try { job = navigator.requestMediaKeySystemAccess(systems[system], [config]); }
-        catch (e) { job = Promise.reject(e); }
-        jobs.push(job.then(
-          function () { drm[system].push(name); },
-          function (e) { drm[system + 'Error'] = (e && e.name) || String(e); }
-        ));
-      });
-    });
-    Promise.all(jobs).then(function () { beat('drm:' + JSON.stringify(drm)); });
+  function readStream() {
+    function again() {
+      audio.connected = false;
+      audio.reconnects++;
+      stash = new Uint8Array(0);
+      setTimeout(readStream, 2000);
+    }
+    fetch('/api/audio', { cache: 'no-store' }).then(function (r) {
+      if (!r.ok || !r.body) { again(); return; }
+      audio.connected = true;
+      var reader = r.body.getReader();
+      (function next() {
+        // Not chained with return: an endless promise chain would never be freed.
+        reader.read().then(function (res) {
+          if (res.done) { again(); return; }
+          takeBytes(res.value);
+          next();
+        }, again);
+      })();
+    }, again);
   }
+
+  function takeBytes(bytes) {
+    audio.kb += bytes.length / 1024;
+    var joined = new Uint8Array(stash.length + bytes.length);
+    joined.set(stash, 0);
+    joined.set(bytes, stash.length);
+    stash = joined;
+    if (stash.length < MIN_BYTES) return;
+    var usable = stash.length - stash.length % 4;   // whole stereo frames only
+    queueSamples(stash.subarray(0, usable));
+    stash = stash.slice(usable);
+  }
+
+  function queueSamples(bytes) {
+    var frames = bytes.length / 4, quiet = performance.now() - lastChunk;
+    lastChunk = performance.now();
+    // Not allowed to play yet, or just told to stop: drop it and stay current.
+    if (ctx.state !== 'running' || performance.now() < muteUntil) { baseAt = 0; return; }
+    var now = ctx.currentTime, at = baseAt + framesQueued / RATE;
+    if (!baseAt || at < now + 0.02) {
+      if (baseAt && quiet < 1000) audio.underruns++;
+      baseAt = Math.ceil((now + LEAD) * RATE) / RATE;   // on a sample boundary
+      framesQueued = 0;
+      at = baseAt;
+    }
+    if (at - now > MAX_AHEAD) { audio.drops++; return; }   // clocks drifted: skip ahead
+
+    var view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+    var buffer = ctx.createBuffer(2, frames, RATE);
+    var left = buffer.getChannelData(0), right = buffer.getChannelData(1), peak = 0;
+    for (var i = 0; i < frames; i++) {
+      var a = view.getInt16(i * 4, true) / 32768;
+      left[i] = a;
+      right[i] = view.getInt16(i * 4 + 2, true) / 32768;
+      if (a > peak) peak = a; else if (-a > peak) peak = -a;
+    }
+    audio.level = Math.round(peak * 100) / 100;
+    var source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(gain);
+    source.start(at);
+    sources.push(source);
+    if (sources.length > 40) sources.shift();
+    framesQueued += frames;
+    audio.played += frames / RATE;
+  }
+
+  // Stop what is already queued (pause or skip pressed here): no trailing sound.
+  function cutSound(ms) {
+    muteUntil = performance.now() + ms;
+    sources.forEach(function (source) { try { source.stop(); } catch (e) {} });
+    sources = [];
+    baseAt = 0;
+  }
+
+  // Fallback for a browser without Web Audio: let an <audio> element play the
+  // same stream as a WAV file. Simpler, but it lags a little more.
+  function startElement() {
+    audio.mode = 'element';
+    audio.state = 'suspended';
+    el = new Audio();
+    el.onplaying = function () { audio.state = 'running'; if (player) renderPlayer(player); };
+    el.onpause = function () { audio.state = 'suspended'; };
+    el.onerror = el.onended = function () { audio.reconnects++; setTimeout(loadElement, 2000); };
+    loadElement();
+  }
+  function loadElement() {
+    el.src = '/api/audio.wav?t=' + Date.now();
+    el.play().catch(function () {});
+  }
+
+  // Browsers only start sound after a touch; every touch is a chance to.
+  function unlockSound() {
+    if (ctx && ctx.state !== 'running') ctx.resume().catch(function () {});
+    if (el && el.paused) el.play().catch(function () {});
+  }
+  function soundBlocked() { return audio.mode !== 'off' && audio.state !== 'running'; }
 
   // ------------------------------------------------------------ heartbeat
   function beat(event) {
@@ -598,9 +607,7 @@
       },
       player: !player ? 'none' : !player.connected ? 'not-connected' : player.active
         ? (player.playing ? 'playing' : 'paused') + ':' + player.device : 'idle',
-      sdk: sdkState,
-      drm: drm || undefined,
-      sdkDevice: sdkDevice,   // left out entirely until the in-page player has started
+      audio: Object.assign({}, audio, { kb: Math.round(audio.kb), played: Math.round(audio.played) }),
       ua: navigator.userAgent
     };
     if (event) body.event = event;
@@ -647,7 +654,7 @@
   document.addEventListener('pointerdown', function () {
     touches++;
     // Any touch unlocks sound for the in-page player.
-    if (sp) { try { sp.activateElement(); } catch (e) {} }
+    unlockSound();
   });
   document.addEventListener('visibilitychange', function () { beat('visibility:' + document.visibilityState); });
   window.addEventListener('error', function (e) { beat('js-error: ' + e.message); });
@@ -656,7 +663,6 @@
   refresh();
   pollPlayer();
   startCast();
-  probeDrm();
   beat('loaded');
   setInterval(tick, 1000);
   setInterval(drawProgress, 1000);
