@@ -1,19 +1,15 @@
 name: Release
 
-# Ships a new image whenever the "version" field in package.json changes on main.
-# Bump the version locally (`npm run release:patch` / `:minor` / `:major`) and push
-# to main; this workflow verifies, tags the release, and pushes the image to
-# GitHub's container registry (ghcr.io). No version change -> nothing runs.
-#
-# package.json exists only to carry the version and the release scripts; the app
-# itself is Python.
+# Ships a new image whenever the VERSION file changes on main. Bump it locally
+# (`python tools/release.py patch` / `minor` / `major`) and push to main; this
+# workflow verifies, tags the release, and pushes the image to GitHub's
+# container registry (ghcr.io). No version change -> nothing runs.
 on:
   push:
     branches: [main]
-    # Only wake the workflow when package.json is touched; the version job then
-    # confirms the "version" field actually changed before anything ships.
+    # Only wake the workflow when the VERSION file is touched.
     paths:
-      - "package.json"
+      - "VERSION"
 
 concurrency:
   group: release-${{ github.ref }}
@@ -33,13 +29,12 @@ jobs:
           fetch-depth: 2
 
       - id: check
-        name: Compare package.json version against previous commit
+        name: Compare VERSION against previous commit
         run: |
-          current=$(node -p "require('./package.json').version")
+          current=$(tr -d '[:space:]' < VERSION)
           echo "version=$current" >> "$GITHUB_OUTPUT"
-          if git cat-file -e HEAD~1:package.json 2>/dev/null; then
-            previous=$(git show HEAD~1:package.json \
-              | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+          if git cat-file -e HEAD~1:VERSION 2>/dev/null; then
+            previous=$(git show HEAD~1:VERSION | tr -d '[:space:]')
           else
             previous=""
           fi
@@ -53,8 +48,8 @@ jobs:
           fi
 
   verify:
-    # The Node template's lint/typecheck/test gate, adapted: this project has
-    # no linter or type checker, so the gate is a syntax check plus the tests.
+    # This project has no linter or type checker, so the gate is a syntax
+    # check plus the tests.
     name: Syntax check and tests
     needs: version
     if: needs.version.outputs.changed == 'true'
@@ -66,8 +61,8 @@ jobs:
           python-version: "3.13"
           cache: pip
       - run: pip install -r requirements.txt
-      - run: npm run check
-      - run: npm run test
+      - run: python -m compileall -q server.py spotify.py tests tools
+      - run: python -m unittest discover -s tests -v
 
   release:
     name: Tag and publish image

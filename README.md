@@ -61,18 +61,17 @@ default when `SPOTIFY_REDIRECT_URI` is empty, for running locally).
 
 ## Releases
 
-The `version` field in `package.json` is the release trigger (the file exists
-only for that and the scripts; the app is Python).
+The `VERSION` file is the release trigger.
 
 ```bash
-npm run release:patch
+python tools/release.py patch
 ```
 
 Commit the bump and push to `main`. The Release workflow then runs the syntax
 check and tests, tags `vX.Y.Z`, and publishes the image to GitHub's container
 registry as `ghcr.io/<owner>/<repo>:X.Y.Z` and `:latest`. Pushes that don't
-change the version publish nothing. Use `release:minor` / `release:major` for
-bigger changes.
+change the version publish nothing. Use `minor` / `major` for bigger changes,
+or just edit the file.
 
 The published image is private while the package is private: either make the
 package public (GitHub → your profile → Packages → the package → Package
