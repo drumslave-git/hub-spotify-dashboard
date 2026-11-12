@@ -14,8 +14,6 @@ Spotify player on the right.
 - `player.py` is the dashboard's own Spotify player: it runs Chrome on the
   server with Spotify's official web player (`web/engine.html`), records
   Chrome's sound and serves it as a stream.
-- `screen.py` runs Spotify's full web app in a second tab of that Chrome,
-  streams its screen to the page and plays the page's touches back into it.
 - `web/index.html` is the page on the Hub. It registers itself as a Cast
   receiver with the idle timeout disabled, which is what stops the Hub from
   closing it, and it plays the server's audio stream. While music plays the
@@ -48,30 +46,6 @@ streamed to the page, which plays it through the Hub's speaker.
 - Pause and skip reach the speaker about half a second later, because the
   sound travels server -> page.
 - Spotify Premium is required (a rule of Spotify's web player).
-
-## Spotify's own app on the Hub
-
-The grid button (on the player bar, and beside Browse and Speakers while
-music plays) opens Spotify's full web app on the whole screen: search,
-artists, albums, podcasts, everything open.spotify.com has. It runs in the
-same Chrome on the server as the dashboard's player; the page shows a live
-picture of it and sends your touches back.
-
-- Tap to click, swipe to scroll, hold for Spotify's menu (add to queue and
-  so on). The strip on the left goes back to the dashboard, back a page,
-  to Spotify's home, and shows a keyboard (English, Ukrainian, digits). The
-  keyboard also comes up by itself when you tap a text field.
-- Left alone for 5 minutes, the screen goes back to the dashboard.
-- Music started in the app plays in that Chrome, so it comes out of the Hub
-  like all other music. The app shows up in Spotify as its own device
-  ("Web Player (Chrome)").
-- Sign in once: open the dashboard in a desktop browser, press the grid
-  button, then "Log in", and type with your own keyboard. Email with a
-  password or a one-time code works; "Continue with Google/Apple" opens a
-  window the page does not show. The sign-in is kept in the data folder
-  (`chrome/`).
-- The picture is sent only while the app is open (`/api/app/screen`).
-  `SPOTIFY_APP=false` leaves the app out.
 
 ## HTTPS address
 
@@ -169,9 +143,8 @@ Optional:
 | `SPOTIFY_PLAYER_NAME` | `Dashboard` | Name of the dashboard's own player in Spotify. |
 | `CAST_APP_ID` | public DashCast app | Your own Cast app ID. |
 | `VOICE_TAKEOVER` | `true` | Move Spotify sessions started on the Hub into the dashboard. |
-| `SPOTIFY_APP` | `true` | The grid button that opens Spotify's full web app on the Hub. |
 | `HUBDASH_IMAGE` | published `:latest` | Image to run, e.g. to pin a release. |
-| `DATA_PATH` | `./data` | Folder that holds the Spotify sign-ins (`spotify.json`, and the app's in `chrome/`). |
+| `DATA_PATH` | `./data` | Folder that holds the Spotify sign-in. |
 
 Only one instance may point at a Hub; two would keep re-casting over each other.
 
@@ -186,8 +159,6 @@ Only one instance may point at a Hub; two would keep re-casting over each other.
   Under `local` it shows the built-in player (`ready` when Chrome is signed
   in to Spotify, and how many pages are listening to its sound); under
   `beat.audio` it shows what the Hub's page is doing with that sound.
-  Under `app` it shows Spotify's web app: its state, the page it is on, and
-  how many pages are watching it.
 - `docker logs -f hubdash` shows the same events live.
 
 ## Local development (Windows)

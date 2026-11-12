@@ -10,9 +10,6 @@ Spotify's own app.
 Why not play in the Hub's browser directly: Spotify's player refuses to start
 there. Why not an open-source Spotify client: Spotify refuses those the track
 keys on newer accounts. Chrome with the official player is what works.
-
-The same Chrome also runs Spotify's full web app in a second tab (see
-screen.py), which the page can show full screen.
 """
 from __future__ import annotations
 
@@ -27,8 +24,6 @@ import threading
 import time
 import urllib.parse
 from pathlib import Path
-
-from screen import AppScreen, Cdp
 
 log = logging.getLogger("player")
 
@@ -135,13 +130,8 @@ class LocalPlayer(threading.Thread):
     daemon = True
     STALE = 60   # seconds without a report from the player page before a restart
 
-    def __init__(self, name: str, port: int, note=None, profile: Path | None = None,
-                 screen: AppScreen | None = None) -> None:
+    def __init__(self, name: str, port: int, note=None) -> None:
         super().__init__(name="player")
-        # Chrome's profile. Kept in the data folder when given, so the sign-in
-        # to Spotify's web app survives restarts.
-        self.profile = profile
-        self.screen = screen
         self.page = f"http://127.0.0.1:{port}/engine.html?name={urllib.parse.quote(name)}"
         self.hub = AudioHub()
         self.chrome = os.environ.get("CHROME_BIN") or shutil.which("google-chrome")
@@ -208,7 +198,6 @@ class LocalPlayer(threading.Thread):
     def run(self) -> None:
         if not self.enabled:
             return
-        import fcntl   # Linux only, like everything the player needs
         home = Path(tempfile.gettempdir()) / "hubdash-player"
         env = {
             **os.environ,
@@ -221,7 +210,6 @@ class LocalPlayer(threading.Thread):
         while True:
             started = time.time()
             procs: list[subprocess.Popen] = []
-            pipes: list[int] = []
             try:
                 shutil.rmtree(home, ignore_errors=True)
                 (home / "run").mkdir(parents=True)
@@ -252,29 +240,6 @@ class LocalPlayer(threading.Thread):
                     target=self.hub.pump, args=(lambda n: os.read(fd, n),), name="audio", daemon=True
                 ).start()
 
-                profile = self.profile or home / "chrome"
-                profile.mkdir(parents=True, exist_ok=True)
-                # Left behind when Chrome was killed; with them Chrome may
-                # refuse the profile as "in use by another computer".
-                for lock in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
-                    try:
-                        (profile / lock).unlink()
-                    except OSError:
-                        pass
-
-                # Chrome takes DevTools commands on fd 3 and answers on fd 4.
-                cmd_read, cmd_write = os.pipe()
-                ans_read, ans_write = os.pipe()
-                pipes += [cmd_read, cmd_write, ans_read, ans_write]
-
-                def hand_over_pipes() -> None:   # runs in the child, before Chrome starts
-                    # Copies above 4 first, so neither end is overwritten by
-                    # the other; dup2 then clears close-on-exec on 3 and 4.
-                    a = fcntl.fcntl(cmd_read, fcntl.F_DUPFD_CLOEXEC, 10)
-                    b = fcntl.fcntl(ans_write, fcntl.F_DUPFD_CLOEXEC, 10)
-                    os.dup2(a, 3)
-                    os.dup2(b, 4)
-
                 procs.append(subprocess.Popen(
                     [self.chrome, "--headless=new", "--no-sandbox", "--no-first-run", "--disable-gpu",
                      "--disable-dev-shm-usage", "--autoplay-policy=no-user-gesture-required",
@@ -282,15 +247,8 @@ class LocalPlayer(threading.Thread):
                      "--disable-background-timer-throttling", "--disable-renderer-backgrounding",
                      "--disable-backgrounding-occluded-windows",
                      "--disable-features=Translate,MediaRouter", "--password-store=basic",
-                     "--hide-crash-restore-bubble", "--remote-debugging-pipe",
-                     f"--user-data-dir={profile}", "--window-size=400,300", self.page],
-                    preexec_fn=hand_over_pipes, close_fds=False, **quiet))
-                for fd in (cmd_read, ans_write):   # Chrome's ends
-                    os.close(fd)
-                    pipes.remove(fd)
-                if self.screen:
-                    threading.Thread(target=self.screen.attach, args=(Cdp(cmd_write, ans_read),),
-                                     name="app-tab", daemon=True).start()
+                     f"--user-data-dir={home / 'chrome'}", "--window-size=400,300", self.page],
+                    **quiet))
                 self._note("player: started")
                 self.last_report = 0.0
 
@@ -303,17 +261,10 @@ class LocalPlayer(threading.Thread):
             except OSError as err:
                 self._note(f"player: restarting ({err})")
             finally:
-                if self.screen:
-                    self.screen.detach()
                 for p in reversed(procs):
                     p.kill()
                 for p in procs:
                     p.wait()
-                for fd in pipes:
-                    try:
-                        os.close(fd)
-                    except OSError:
-                        pass
             self.state, self.message, self.device_id = "starting", "", None
             self.restarts += 1
             wait = 5 if time.time() - started > 120 else min(wait * 2, 120)
