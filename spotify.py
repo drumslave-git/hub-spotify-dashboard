@@ -1,6 +1,7 @@
 """Spotify for the dashboard: one-time sign-in, what's playing, and controls.
 
-Uses only the official Web API. Sign-in is the authorization-code flow with
+This side uses only the official Web API (the dashboard's own player, which
+produces the sound, is in player.py). Sign-in is the authorization-code flow with
 PKCE, so only the app's client ID is needed (no client secret). The refresh
 token is kept in the data directory.
 """
@@ -24,6 +25,7 @@ AUTH_URL = "https://accounts.spotify.com/authorize"
 TOKEN_URL = "https://accounts.spotify.com/api/token"
 API = "https://api.spotify.com/v1"
 SCOPES = (
+    # The first three are what Spotify's web player needs to play music.
     "streaming user-read-email user-read-private "
     "user-read-playback-state user-modify-playback-state "
     "user-read-currently-playing user-read-recently-played"
@@ -60,7 +62,7 @@ class Spotify:
         self._state_at = 0.0
         self._last: dict | None = None
         self._last_at = 0.0
-        # The dashboard page itself, when it runs Spotify's in-browser player.
+        # The dashboard's own player (see player.py), as a Spotify device.
         self._local_id: str | None = None
         self._local_at = 0.0
         self._takeover_until = 0.0
@@ -177,7 +179,7 @@ class Spotify:
             return self._access
 
     def access_token(self) -> str | None:
-        """A current access token (the in-page player needs one)."""
+        """A current access token (Spotify's web player on the server needs one)."""
         return self._token()
 
     # ------------------------------------------------------------------- api
@@ -275,15 +277,17 @@ class Spotify:
                 "on_dashboard": bool(device_id) and device_id == self._local_id,
             }
 
-    # ------------------------------------------------------- in-page player
+    # ------------------------------------------------ the dashboard's player
 
     @property
     def local_ready(self) -> bool:
-        """True while the dashboard page reports a working in-browser player."""
+        """True while the dashboard's own player is signed in and a page is
+        listening to its sound."""
         return bool(self._local_id) and time.time() - self._local_at < 60
 
     def set_local_device(self, device_id: str | None) -> None:
-        """Called from the page's heartbeat with its Spotify device id (or None)."""
+        """Called every few seconds with the player's Spotify device id while
+        it is ready and being listened to."""
         with self._lock:
             self._local_id = device_id or None
             self._local_at = time.time()
@@ -295,14 +299,14 @@ class Spotify:
 
     @property
     def local_recent(self) -> bool:
-        """The page had a working in-browser player within the last few minutes
-        (it stops reporting while another app holds the Hub's screen)."""
+        """The dashboard could play by itself within the last few minutes (the
+        page stops listening while another app holds the Hub's screen)."""
         return bool(self._local_id) and time.time() - self._local_at < 300
 
     def expect_takeover(self) -> None:
         """Music was started elsewhere on the Hub (e.g. by voice). Remember
-        what is playing, so it can continue in the page's player as soon as
-        the page reports in again."""
+        what is playing, so it can continue on the dashboard's player as soon
+        as the page is listening again."""
         self._handoff = None
         status, p = self._api("GET", "/me/player", {"additional_types": "track,episode"})
         if status == 200 and p and p.get("item"):
@@ -350,7 +354,7 @@ class Spotify:
             for d in devices:
                 if d.get("id") == self._local_id:
                     return d
-        # Without the page's own player, only start music on a device that was
+        # Without the dashboard's own player, only start music on a device that was
         # chosen on purpose. Never fall back to the Hub's own Spotify app or a
         # random device: that would switch the Hub's screen or play elsewhere.
         wanted = self.preferred_device.strip().lower()

@@ -6,10 +6,24 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# The dashboard's own player: Chrome runs Spotify's official web player, and
+# PulseAudio gives it a software sound card whose output the server records.
+# Chrome is only published for amd64.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl gnupg pulseaudio pulseaudio-utils \
+    && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
+       | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" \
+       > /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends google-chrome-stable \
+    && apt-get purge -y curl gnupg && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* /etc/apt/sources.list.d/google-chrome.list
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY server.py spotify.py docker-entrypoint.py ./
+COPY server.py spotify.py player.py docker-entrypoint.py ./
 COPY web ./web
 
 # The service runs as this unprivileged user. The container itself starts as

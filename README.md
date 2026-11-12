@@ -9,33 +9,43 @@ time, date and weather on the left, a Spotify player on the right.
   when the Hub goes idle again.
 - `spotify.py` handles the one-time Spotify sign-in and talks to the official
   Spotify Web API (what's playing, play/pause, skip, volume, resume).
-- `web/index.html` is the page. It registers itself as a Cast receiver with the
-  idle timeout disabled, which is what stops the Hub from closing it.
+- `player.py` is the dashboard's own Spotify player: it runs Chrome on the
+  server with Spotify's official web player (`web/engine.html`), records
+  Chrome's sound and serves it as a stream.
+- `web/index.html` is the page on the Hub. It registers itself as a Cast
+  receiver with the idle timeout disabled, which is what stops the Hub from
+  closing it, and it plays the server's audio stream.
 
 ## How music works
 
-The Hub shows one Cast app at a time, so for music to play on the Hub while
-the dashboard stays on screen, the dashboard page is the player: on an HTTPS
-address it runs Spotify's in-browser player and appears in Spotify as a device
-(named by `SPOTIFY_PLAYER_NAME`, default "Dashboard").
+The Hub shows one Cast app at a time, so for music to come out of the Hub
+while the dashboard stays on screen, the dashboard itself has to make the
+sound. The Hub's browser cannot run Spotify's web player, so that player runs
+in Chrome inside the container instead. It appears in Spotify as a device
+(named by `SPOTIFY_PLAYER_NAME`, default "Dashboard"), and its sound is
+streamed to the page, which plays it through the Hub's speaker.
 
 - The play button resumes your last Spotify session on that device.
+- You can also pick "Dashboard" as the device in any Spotify app.
 - If Spotify's own app starts on the Hub (for example after "Hey Google,
-  play…"), the service notes the track and position, closes that app, re-casts
+  play..."), the service notes the track and position, closes that app, re-casts
   the dashboard and continues the music there (`VOICE_TAKEOVER`).
 - The Hub refuses to start sound from a page until the screen is touched.
-  Without your own Cast app, a voice-started song therefore waits for one tap
-  after the dashboard returns.
-- Over plain HTTP the in-browser player cannot run; the player then only shows
-  and controls music playing on other Spotify devices.
+  Pressing play is such a touch. Music started any other way waits for one tap
+  after the dashboard (re)loads, unless your own Cast app lifts that rule.
+- Pause and skip reach the speaker about half a second later, because the
+  sound travels server -> page.
+- Spotify Premium is required (a rule of Spotify's web player).
 
 ## HTTPS address
 
 Point a hostname with a publicly trusted certificate at the service, e.g. a
-reverse-proxy entry `https://hub.example.com` -> `http://<server>:8765`. The
-Hub must be able to resolve the name (it may use Google's DNS, not yours) and
-it only trusts public certificate authorities. Then set
-`PUBLIC_URL=https://hub.example.com/`.
+reverse-proxy entry `https://hub.example.com` -> `http://<server>:8765`.
+Spotify's sign-in only returns to an `https://` address, the Hub must be able
+to resolve the name (it may use Google's DNS, not yours) and it only trusts
+public certificate authorities. Then set `PUBLIC_URL=https://hub.example.com/`.
+The proxy must pass long-lived responses through (`/api/audio` is an endless
+stream).
 
 ## Spotify setup (once)
 
@@ -87,6 +97,9 @@ server, then:
 docker compose pull && docker compose up -d
 ```
 
+The image is for x86-64 only and is large (about 1.5 GB) because it contains
+Chrome; expect a few hundred MB of memory in use.
+
 To update after a release, run that command again. The container starts as
 root only to make the mounted `data` folder writable, then runs the service
 as an unprivileged user (uid 1000). To build from source
@@ -128,6 +141,9 @@ Only one instance may point at a Hub; two would keep re-casting over each other.
 - `http://<server>:8765/api/debug` shows the keeper state, the Hub's last
   heartbeat (including the layout it measured on its own screen), the player
   state, and recent events.
+  Under `local` it shows the built-in player (`ready` when Chrome is signed
+  in to Spotify, and how many pages are listening to its sound); under
+  `beat.audio` it shows what the Hub's page is doing with that sound.
 - `docker logs -f hubdash` shows the same events live.
 
 ## Local development (Windows)
@@ -146,7 +162,9 @@ python -m venv .venv
 
 Copy `config.example.json` to `config.json`; it supplies settings when the
 environment variables are not set. `--no-keeper` serves the page without
-casting it.
+casting it. The built-in player needs Chrome and PulseAudio, so it only runs
+in the container; `--test-tone` streams a beep instead, to try the page's
+sound path (open `http://localhost:8765/?player=1`).
 
 ```bash
 .venv\Scripts\python.exe -m unittest discover -s tests

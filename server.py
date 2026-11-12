@@ -11,7 +11,9 @@ import json
 import logging
 import mimetypes
 import os
+import queue
 import socket
+import struct
 import sys
 import threading
 import time
@@ -23,6 +25,7 @@ from pathlib import Path
 import pychromecast
 from pychromecast.controllers.dashcast import DashCastController
 
+from player import SILENCE, LocalPlayer, wav_header
 from spotify import Spotify
 
 ROOT = Path(__file__).parent
@@ -70,7 +73,7 @@ def load_config() -> dict:
     # Spotify device to start music on when nothing is playing and the page's
     # own player is not available.
     sp["device"] = env.get("SPOTIFY_DEVICE") or sp.get("device") or ""
-    # Name the dashboard's own in-page player shows up as in Spotify.
+    # Name the dashboard's own player shows up as in Spotify.
     sp["player_name"] = env.get("SPOTIFY_PLAYER_NAME") or sp.get("player_name") or "Dashboard"
     cfg["spotify"] = sp
 
@@ -302,6 +305,43 @@ spotify = Spotify(
 )
 
 
+# The dashboard's own Spotify device; its audio is streamed to the page.
+local = LocalPlayer(CONFIG["spotify"]["player_name"], CONFIG["port"], note=keeper.note)
+
+
+def link_player() -> None:
+    """Tell the Spotify side which device is the dashboard, while the player is
+    signed in and a page is actually listening to its audio."""
+    while True:
+        time.sleep(3)
+        if local.ready and local.hub.listeners:
+            spotify.set_local_device(local.device_id)
+
+
+def test_tone() -> None:
+    """--test-tone: a quiet beep pattern instead of the player, to try the
+    page's audio path without Spotify."""
+    import math
+
+    frames = b"".join(
+        struct.pack("<hh", v, v)
+        for v in (
+            int(2500 * math.sin(2 * math.pi * 440 * i / 44100)) if i < 44100 // 4 else 0
+            for i in range(44100)
+        )
+    )
+    position = 0
+
+    def read(n: int) -> bytes:
+        nonlocal position
+        chunk = frames[position:position + n] or frames[:n]
+        position = (position + len(chunk)) % len(frames)
+        return chunk
+
+    local.state = "test"
+    local.hub.pump(read)
+
+
 def page_version() -> str:
     return str(int(max(p.stat().st_mtime for p in WEB.rglob("*") if p.is_file())))
 
@@ -348,9 +388,15 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/health":
             self._json({"ok": True})
         elif path == "/api/player":
-            self._json({**spotify.state(), "player_name": CONFIG["spotify"]["player_name"]})
+            self._json({**spotify.state(), "local": local.info()})
+        elif path in ("/api/audio", "/api/audio.wav"):
+            self._audio(wav=path.endswith(".wav"))
         elif path == "/api/spotify/token":
-            # For the page's own in-browser Spotify player.
+            # Only for the player page in Chrome on this machine: a token is
+            # the key to the account, so nobody else on the network gets one.
+            if not self._from_here():
+                self._json({"error": "not available"}, 403)
+                return
             token = spotify.access_token()
             self._json({"token": token}, 200 if token else 503)
         elif path == "/api/spotify/login":
@@ -398,6 +444,7 @@ class Handler(BaseHTTPRequestHandler):
                     },
                     "beat": keeper.beat,
                     "player": spotify.state(),
+                    "local": local.debug(),
                     "events": keeper.events,
                 }
             )
@@ -422,11 +469,18 @@ class Handler(BaseHTTPRequestHandler):
                     keeper.note(f"first heartbeat from hub: {json.dumps(beat)}")
                 keeper.last_beat = time.time()
                 keeper.beat = beat
-            # A page running Spotify's in-browser player reports its device id.
-            if "sdkDevice" in beat:
-                spotify.set_local_device(beat.get("sdkDevice"))
             if beat.get("event"):
                 keeper.note(f"page event from {beat['from']}: {beat['event']}")
+            self._json({"ok": True})
+        elif path == "/api/engine":
+            # Status from the player page in Chrome on this machine.
+            if not self._from_here():
+                self._json({"error": "not available"}, 403)
+                return
+            try:
+                local.report(json.loads(raw))
+            except ValueError:
+                pass
             self._json({"ok": True})
         elif path == "/api/player":
             action, ok, message = "?", False, "Bad request."
@@ -444,6 +498,40 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": ok, "message": message})
         else:
             self._json({"error": "not found"}, 404)
+
+    def _from_here(self) -> bool:
+        """The request came from this machine itself, not through the network
+        or a reverse proxy."""
+        return self.client_address[0] in ("127.0.0.1", "::1") and not self.headers.get("X-Forwarded-For")
+
+    def _audio(self, wav: bool) -> None:
+        """The player's sound as an endless stream of 16-bit stereo 44.1 kHz
+        samples (with a WAV header on request)."""
+        if local.state == "off":
+            self._json({"error": "this server has no built-in player"}, 404)
+            return
+        feed = local.hub.subscribe()
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/wav" if wav else "application/octet-stream")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Accel-Buffering", "no")  # ask proxies not to hold it back
+            self.end_headers()
+            if wav:
+                self.wfile.write(wav_header())
+            while True:
+                try:
+                    chunk = feed.get(timeout=10)
+                except queue.Empty:
+                    # Nothing playing: a blip of silence keeps the connection
+                    # open and shows when the listener has gone.
+                    chunk = SILENCE
+                self.wfile.write(chunk)
+                self.wfile.flush()
+        except OSError:
+            pass  # the listener went away
+        finally:
+            local.hub.unsubscribe(feed)
 
     def _static(self, path: str) -> None:
         rel = "index.html" if path in ("", "/") else path.lstrip("/")
@@ -479,6 +567,13 @@ def main() -> None:
         keeper.start()
     else:
         keeper.state = "disabled"
+    if "--test-tone" in sys.argv:
+        threading.Thread(target=test_tone, name="tone", daemon=True).start()
+    elif local.enabled:
+        local.start()
+        threading.Thread(target=link_player, name="link", daemon=True).start()
+    else:
+        log.info("no built-in Spotify player here (needs Chrome and PulseAudio)")
     server = Server(("0.0.0.0", CONFIG["port"]), Handler)
     log.info("serving on port %s, casting %s", CONFIG["port"], CONFIG["public_url"])
     server.serve_forever()

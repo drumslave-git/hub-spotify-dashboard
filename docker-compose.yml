@@ -23,9 +23,9 @@ services:
       # The Nest Hub's IP. Give it a fixed DHCP lease on the router.
       HUB_HOST: ${HUB_HOST:?set HUB_HOST in .env to the Nest Hub's IP address}
 
-      # Address the Hub loads the dashboard from. Must be https with a publicly
-      # trusted certificate for Spotify to play inside the dashboard,
-      # e.g. https://hub.example.com/
+      # Address the Hub loads the dashboard from, e.g. https://hub.example.com/
+      # Spotify's sign-in only returns to an https address, and the Hub only
+      # trusts publicly issued certificates.
       PUBLIC_URL: ${PUBLIC_URL:?set PUBLIC_URL in .env to the dashboard's https address}
 
       # Timezone of the clock, e.g. Europe/London

@@ -8,6 +8,12 @@
       "port": 8765
     },
     {
+      "name": "hubdash-tone",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["server.py", "--no-keeper", "--test-tone"],
+      "port": 8765
+    },
+    {
       "name": "hubdash",
       "runtimeExecutable": ".venv\\Scripts\\python.exe",
       "runtimeArgs": ["server.py"],

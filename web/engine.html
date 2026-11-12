@@ -1,0 +1,70 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dashboard player</title>
+<body>
+<!--
+  Runs in Chrome on the server, never on the Hub. It is Spotify's official web
+  player (the Web Playback SDK): it appears in Spotify as a device, and its
+  sound is recorded by the server and streamed to the dashboard.
+-->
+<script>
+(function () {
+  'use strict';
+  var name = new URLSearchParams(location.search).get('name') || 'Dashboard';
+  var device = null;
+
+  function report(event, message) {
+    fetch('/api/engine', {
+      method: 'POST',
+      body: JSON.stringify({ event: event, device: device, message: message || '' })
+    }).catch(function () {});
+  }
+
+  function token() {
+    return fetch('/api/spotify/token', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { return d && d.token; })
+      .catch(function () { return null; });
+  }
+
+  // A failed start is retried from scratch: a sign-in, or a hiccup at Spotify,
+  // may have fixed it in the meantime.
+  function retry() { setTimeout(function () { location.reload(); }, 30000); }
+
+  function start() {
+    token().then(function (t) {
+      if (!t) { report('waiting'); setTimeout(start, 5000); return; }   // not signed in yet
+      var s = document.createElement('script');
+      s.src = 'https://sdk.scdn.co/spotify-player.js';
+      s.onerror = function () { report('error', 'load_error: could not load the player'); retry(); };
+      document.head.appendChild(s);
+    });
+  }
+
+  window.onSpotifyWebPlaybackSDKReady = function () {
+    var player = new window.Spotify.Player({
+      name: name,
+      volume: 1,
+      getOAuthToken: function (cb) { token().then(function (t) { if (t) cb(t); }); }
+    });
+    player.addListener('ready', function (e) { device = e.device_id; report('ready'); });
+    player.addListener('not_ready', function () { device = null; report('not_ready'); });
+    ['initialization_error', 'authentication_error', 'account_error'].forEach(function (type) {
+      player.addListener(type, function (e) {
+        device = null;
+        report('error', type + ': ' + (e && e.message));
+        retry();
+      });
+    });
+    player.addListener('playback_error', function (e) { report('playback_error', e && e.message); });
+    player.addListener('autoplay_failed', function () { report('playback_error', 'the browser held the sound back'); });
+    player.connect().then(function (ok) {
+      if (!ok) { report('error', 'connect_error: could not connect to Spotify'); retry(); }
+    });
+    setInterval(function () { report(device ? 'alive' : 'idle'); }, 10000);
+  };
+
+  report('idle');
+  start();
+})();
+</script>
