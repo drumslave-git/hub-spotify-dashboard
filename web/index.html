@@ -24,6 +24,9 @@
     overflow: hidden;
     -webkit-user-select: none; user-select: none;
     -webkit-tap-highlight-color: transparent;
+    /* No double-tap zoom or text menus: every tap is a press. */
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
   }
   /* On a smart display the Cast system adds its own media-control layer over
      the page. It is invisible here but would swallow every tap. */
@@ -124,7 +127,7 @@
   .idle .p-bg.has-art::after { background: rgba(11,13,16,0.78); }
   .p-head, .p-foot { position: relative; }
 
-  .p-head { display: flex; align-items: flex-start; gap: 1.2vw; min-width: 0; }
+  .p-head { display: flex; align-items: flex-start; gap: 1.4vw; min-width: 0; }
   .p-meta { flex: 1; min-width: 0; text-shadow: 0 1px 6px rgba(0,0,0,0.7); }
   .p-title, .p-artist, .p-next {
     display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
@@ -134,51 +137,66 @@
   .p-artist { margin-top: 0.8vh; font-size: 3.5vh; line-height: 1.25; color: #c9cdd3; -webkit-line-clamp: 1; }
   .p-note { margin-top: 1vh; font-size: 2.8vh; line-height: 1.3; color: #a9aeb6; }
   .p-note.alert { color: var(--warm); }
-  .p-tools { display: flex; gap: 0.8vw; flex: none; }
+  .p-tools { display: flex; gap: 1.4vw; flex: none; }
 
   .p-next { font-size: 2.8vh; line-height: 1.3; color: #c9cdd3; -webkit-line-clamp: 1; min-height: 3.6vh; text-shadow: 0 1px 6px rgba(0,0,0,0.7); }
-  .p-sub { margin-top: 0.8vh; display: flex; align-items: center; gap: 0.8vw; }
+  .p-sub { margin-top: 0.6vh; display: flex; align-items: center; gap: 1.4vw; }
   .p-sub.off { visibility: hidden; }
   .grow { flex: 1; }
 
   /* Small round buttons: tools, shuffle, repeat, like. */
   .chip {
-    width: 10vh; height: 10vh; flex: none;
+    width: 12vh; height: 12vh; flex: none;      /* 72 px on the Hub: a fingertip */
     border: 0; border-radius: 50%;
-    background: rgba(11,13,16,0.5); color: var(--text);
+    background: rgba(11,13,16,0.55); color: var(--text);
     display: flex; align-items: center; justify-content: center;
     -webkit-appearance: none; appearance: none; outline: none;
+    transition: transform 0.08s, background 0.08s;
   }
-  .chip svg { width: 4.4vh; height: 4.4vh; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  .chip:active { background: var(--raised); }
+  .chip svg { width: 5.2vh; height: 5.2vh; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  /* A press must be seen at once, before Spotify has answered. */
+  .chip:active { background: rgba(243,240,234,0.28); transform: scale(0.92); }
   .chip.on { color: var(--warm); }
   .chip.on.fill svg { fill: currentColor; }
   .chip .one { display: none; }
   .chip.single .one { display: inline; }
   .chip[disabled] { opacity: 0.3; }
 
-  .p-progress { margin-top: 0.4vh; display: flex; align-items: center; gap: 1.2vw; font-size: 2.8vh; color: #c9cdd3; font-variant-numeric: tabular-nums; }
+  .p-progress { display: flex; align-items: center; gap: 1.4vw; font-size: 3.2vh; color: #dfe2e6; font-variant-numeric: tabular-nums; text-shadow: 0 1px 6px rgba(0,0,0,0.7); }
   .p-progress.off { visibility: hidden; }
-  /* Taller than the bar it holds, so a finger can hit it. */
-  .seek { flex: 1; height: 6.4vh; display: flex; align-items: center; }
-  .bar { flex: 1; height: 0.9vh; border-radius: 1vh; background: rgba(255,255,255,0.22); overflow: hidden; }
-  .bar i { display: block; height: 100%; width: 0; background: var(--text); border-radius: 1vh; }
+  .p-progress span { min-width: 3.4em; }
+  #pDur { text-align: right; }
+  /* The seek bar: a thick track with a handle, in a strip tall enough to
+     land a finger on. Tap anywhere on it, or drag the handle. */
+  .seek { flex: 1; height: 10vh; position: relative; display: flex; align-items: center; touch-action: none; }
+  .bar { flex: 1; height: 2.2vh; border-radius: 1.1vh; background: rgba(255,255,255,0.26); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--text); }
+  .knob {
+    position: absolute; top: 50%; left: 0;
+    width: 5.6vh; height: 5.6vh; margin: -2.8vh 0 0 -2.8vh;
+    border-radius: 50%; background: var(--text);
+    box-shadow: 0 0.3vh 1.2vh rgba(0,0,0,0.55);
+    transition: transform 0.08s;
+  }
+  .seek.drag .knob { transform: scale(1.35); }
+  .seek.drag .bar i { background: var(--warm); }
 
-  .p-ctl { display: flex; align-items: center; justify-content: center; gap: 4vw; }
+  .p-ctl { display: flex; align-items: center; justify-content: center; gap: 5vw; }
   .btn {
     width: 15vh; height: 15vh; flex: none;
     border: 0; border-radius: 50%;
     background: transparent; color: var(--text);
     display: flex; align-items: center; justify-content: center;
     -webkit-appearance: none; appearance: none; outline: none;
+    transition: transform 0.08s, background 0.08s;
   }
   .btn svg { width: 6.4vh; height: 6.4vh; fill: currentColor; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .btn.main { width: 19vh; height: 19vh; background: var(--text); color: var(--bg); }
   .btn.main svg { width: 7.4vh; height: 7.4vh; }
-  .btn:active { background: var(--raised); }
+  .btn:active { background: rgba(243,240,234,0.22); transform: scale(0.93); }
   /* A press is on its way to Spotify: further presses wait for it. */
   .player.busy .btn { opacity: 0.5; }
-  .btn.main:active { background: #c9c6c0; }
+  .btn.main:active { background: #c9c6c0; transform: scale(0.93); }
   .btn[disabled] { opacity: 0.22; }
 
   /* A list over the card: what to play, or where to play it. Paged instead
@@ -186,21 +204,22 @@
   .sheet {
     position: absolute; top: 0; right: 0; bottom: 0; left: 0;
     background: var(--panel);
-    padding: 2.2vh 1.6vw 1.8vh;
+    padding: 1.6vh 1.4vw 1.6vh;
     display: flex; flex-direction: column;
   }
   .sheet[hidden] { display: none; }
   .sheet-head { display: flex; align-items: center; font-size: 4.2vh; padding-left: 0.6vw; }
+  .sheet-head .chip { background: var(--raised); }
   .sheet-head span { flex: 1; }
-  .sheet-list { flex: 1; min-height: 0; margin-top: 1vh; }
+  .sheet-list { flex: 1; min-height: 0; margin-top: 0.4vh; }
   .row {
-    height: 12.4vh; width: 100%;
+    height: 12vh; width: 100%;
     display: flex; align-items: center; gap: 1.4vw;
     padding: 0 0.8vw; border: 0; border-radius: 2vh;
     background: transparent; color: var(--text); text-align: left;
     font: inherit; -webkit-appearance: none; appearance: none; outline: none;
   }
-  .row:active { background: var(--raised); }
+  .row:active { background: rgba(243,240,234,0.16); }
   .row .thumb { width: 9.6vh; height: 9.6vh; flex: none; border-radius: 1.2vh; background: var(--raised) center / cover no-repeat; display: flex; align-items: center; justify-content: center; color: var(--muted); }
   .row .thumb svg { width: 4.6vh; height: 4.6vh; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   .row .words { min-width: 0; flex: 1; }
@@ -209,9 +228,12 @@
   .row .sub { margin-top: 0.3vh; font-size: 2.6vh; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row.now .sub { color: var(--warm); }
   .sheet-empty { padding: 3vh 0.8vw; font-size: 3.2vh; line-height: 1.4; color: var(--muted); }
-  .sheet-foot { display: flex; align-items: center; justify-content: center; gap: 2vw; font-size: 2.8vh; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .sheet-foot { display: flex; align-items: center; gap: 1.2vw; font-size: 3vh; color: var(--muted); font-variant-numeric: tabular-nums; }
   .sheet-foot.off { visibility: hidden; }
-  .sheet-foot .chip { width: 8.6vh; height: 8.6vh; background: var(--raised); }
+  .sheet-foot span { min-width: 4.5em; text-align: center; }
+  /* Wide page buttons rather than small arrows. */
+  .sheet-foot .chip { flex: 1; width: auto; height: 10.5vh; border-radius: 2.2vh; background: var(--raised); }
+  .sheet-foot .chip[disabled] { opacity: 0.3; }
 
   /* ------------------------------------------------- night: a dim clock only */
   .night-clock {
@@ -284,7 +306,7 @@
       </div>
       <div class="p-progress off" id="pProgress">
         <span id="pPos">0:00</span>
-        <div class="seek" id="pSeek"><div class="bar"><i id="pFill"></i></div></div>
+        <div class="seek" id="pSeek"><div class="bar"><i id="pFill"></i></div><div class="knob" id="pKnob"></div></div>
         <span id="pDur">0:00</span>
       </div>
       <div class="p-ctl">
@@ -565,13 +587,17 @@
     return Math.max(0, Math.min(p.duration_ms, pos));
   }
 
+  var dragging = null;   // while a finger is on the seek bar: where it is, 0..1
+
   function drawProgress() {
     var p = player;
     if (!p || !p.active || !p.duration_ms) return;
-    var pos = position(p);
+    var pos = dragging == null ? position(p) : dragging * p.duration_ms;
+    var part = 100 * pos / p.duration_ms;
     $('pPos').textContent = clock(pos);
     $('pDur').textContent = clock(p.duration_ms);
-    $('pFill').style.width = (100 * pos / p.duration_ms) + '%';
+    $('pFill').style.width = part + '%';
+    $('pKnob').style.left = part + '%';
   }
 
   var COVER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23e9a05c'/%3E%3Cstop offset='.5' stop-color='%23b8456b'/%3E%3Cstop offset='1' stop-color='%232a2f6b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='300' height='300' fill='url(%23g)'/%3E%3Ccircle cx='210' cy='95' r='60' fill='%23fff' fill-opacity='.55'/%3E%3C/svg%3E";
@@ -670,12 +696,33 @@
   $('pLike').addEventListener('click', function () { command('like'); });
   $('pShuffle').addEventListener('click', function () { command('shuffle'); });
   $('pRepeat').addEventListener('click', function () { command('repeat'); });
-  $('pSeek').addEventListener('click', function (e) {
-    if (!player || !player.active || !player.duration_ms) return;
+  // Seek: put a finger anywhere on the bar, slide if you like, let go.
+  function seekPart(e) {
     var box = $('pSeek').getBoundingClientRect();
-    var part = Math.max(0, Math.min(1, (e.clientX - box.left) / box.width));
-    command('seek', Math.round(part * player.duration_ms));
+    return Math.max(0, Math.min(1, (e.clientX - box.left) / box.width));
+  }
+  $('pSeek').addEventListener('pointerdown', function (e) {
+    if (!player || !player.active || !player.duration_ms) return;
+    dragging = seekPart(e);
+    try { $('pSeek').setPointerCapture(e.pointerId); } catch (err) {}
+    $('pSeek').classList.add('drag');
+    drawProgress();
   });
+  $('pSeek').addEventListener('pointermove', function (e) {
+    if (dragging == null) return;
+    dragging = seekPart(e);
+    drawProgress();
+  });
+  function endSeek(e, apply) {
+    if (dragging == null) return;
+    var part = apply ? seekPart(e) : null;
+    dragging = null;
+    $('pSeek').classList.remove('drag');
+    if (apply && player && player.duration_ms) command('seek', Math.round(part * player.duration_ms));
+    else drawProgress();
+  }
+  $('pSeek').addEventListener('pointerup', function (e) { endSeek(e, true); });
+  $('pSeek').addEventListener('pointercancel', function (e) { endSeek(e, false); });
 
   // ------------------------------------------------- what to play, and where
   var NOTE_ICON = '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
@@ -702,6 +749,8 @@
     });
     $('sheetList').innerHTML = html || '<div class="sheet-empty">' + esc(sheet.empty) + '</div>';
     $('sheetFoot').classList.toggle('off', pages < 2);
+    $('sheetBack').disabled = sheet.page === 0;
+    $('sheetMore').disabled = sheet.page >= pages - 1;
     $('sheetPage').textContent = (sheet.page + 1) + ' / ' + pages;
     // Left alone, the list goes away by itself.
     clearTimeout(sheetTimer);
