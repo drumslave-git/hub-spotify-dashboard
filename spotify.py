@@ -36,6 +36,11 @@ SCOPES = (
 )
 
 
+# "Liked Songs" in the list of things to play, and how many of them are queued.
+LIKED = "liked"
+LIKED_MAX = 300
+
+
 def _http(method: str, url: str, headers: dict | None = None, data: bytes | None = None):
     req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
     try:
@@ -383,9 +388,29 @@ class Spotify:
                 if entry["uri"] not in seen:
                     seen.add(entry["uri"])
                     recent.append(entry)
-            self._library = {"recent": recent[:8], "playlists": playlists}
+            # Liked Songs is not something Spotify can be told to play as a
+            # whole, so it is offered as its own entry and played as a list of
+            # the most recently liked tracks (see _liked_uris).
+            liked = None
+            status, p = self._api("GET", "/me/tracks", {"limit": 1})
+            if status == 200 and p and p.get("total"):
+                first = ((p.get("items") or [{}])[0].get("track") or {}).get("album") or {}
+                liked = {"uri": LIKED, "name": "Liked Songs", "art": art(first.get("images")),
+                         "kind": f"{p['total']} songs you liked"}
+            self._library = {"liked": liked, "recent": recent[:8], "playlists": playlists}
             self._library_at = time.time()
             return self._library
+
+    def _liked_uris(self) -> list[str]:
+        """The most recently liked tracks, newest first, up to LIKED_MAX."""
+        uris: list[str] = []
+        while len(uris) < LIKED_MAX:
+            status, p = self._api("GET", "/me/tracks", {"limit": 50, "offset": len(uris)})
+            items = (p or {}).get("items") or [] if status == 200 else []
+            uris += [i["track"]["uri"] for i in items if (i.get("track") or {}).get("uri")]
+            if len(items) < 50:
+                break
+        return uris[:LIKED_MAX]
 
     def devices(self) -> list[dict]:
         """Where Spotify can play right now, the dashboard's own player first."""
@@ -530,7 +555,14 @@ class Spotify:
             if device is None:
                 return False, "The dashboard can't play music by itself yet."
             device_id = device["id"]
-        status, payload = self._api("PUT", "/me/player/play", {"device_id": device_id}, {"context_uri": uri})
+        if uri == LIKED:
+            uris = self._liked_uris()
+            if not uris:
+                return False, "Could not read your liked songs."
+            body = {"uris": uris}
+        else:
+            body = {"context_uri": uri}
+        status, payload = self._api("PUT", "/me/player/play", {"device_id": device_id}, body)
         return (True, "") if status in (200, 202, 204) else (False, self._reason(status, payload))
 
     def command(self, action: str, value=None) -> tuple[bool, str]:

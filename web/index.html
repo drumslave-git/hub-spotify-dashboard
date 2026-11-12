@@ -588,7 +588,7 @@
     setup: { configured: false, connected: false }
   };
   DEMO.night = DEMO.idle;
-  var DEMO_LIBRARY = { recent: [
+  var DEMO_LIBRARY = { liked: { uri: 'liked', name: 'Liked Songs', art: COVER, kind: '412 songs you liked' }, recent: [
       { uri: 'a1', name: 'You\'re Dead!', art: COVER, kind: 'Album' },
       { uri: 'p1', name: 'Evening cooking', art: null, kind: 'Playlist' }
     ], playlists: [
@@ -732,6 +732,10 @@
         }).concat((data.playlists || []).filter(function (e) { return !seen[e.uri]; }).map(function (e) {
           return { value: e.uri, name: e.name, art: e.art, icon: NOTE_ICON, sub: e.kind };
         }));
+        if (data.liked) {
+          sheet.rows.unshift({ value: data.liked.uri, name: data.liked.name, art: data.liked.art,
+                               icon: NOTE_ICON, sub: data.liked.kind });
+        }
         sheet.empty = 'No playlists found.';
         // Signed in before the dashboard asked for playlists and likes.
         if (player && player.needs_login) {

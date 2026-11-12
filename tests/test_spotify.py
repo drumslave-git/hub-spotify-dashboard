@@ -23,6 +23,7 @@ class FakeApi:
         self.liked = False
         self.queue = []
         self.playlists = []
+        self.saved = []  # liked tracks, newest first
 
     def __call__(self, method, path, query=None, body=None):
         self.calls.append((method, path, query, body))
@@ -34,6 +35,11 @@ class FakeApi:
             return 200, {"queue": self.queue}
         if path == "/me/playlists":
             return 200, {"items": self.playlists}
+        if path == "/me/tracks":
+            start = int((query or {}).get("offset", 0))
+            page = self.saved[start:start + int(query["limit"])]
+            return 200, {"total": len(self.saved), "items": [
+                {"track": {"uri": uri, "album": {"images": [{"url": "cover-of-" + uri}]}}} for uri in page]}
         if path in ("/me/library", "/me/player/shuffle", "/me/player/repeat", "/me/player/seek"):
             return 200, None
         if path == "/me/player" and method == "GET":
@@ -250,6 +256,28 @@ class SpotifyTests(unittest.TestCase):
         self.assertEqual([(e["uri"], e["kind"]) for e in lib["recent"]],
                          [("spotify:playlist:mix", "Playlist"), ("spotify:album:a1", "Album")])
         self.assertEqual(lib["playlists"][0]["art"], "big")
+
+    def test_library_offers_liked_songs(self):
+        self.assertIsNone(self.sp.library()["liked"])  # nothing liked: no entry
+        self.sp._library = None
+        self.api.saved = ["spotify:track:%d" % n for n in range(120)]
+        liked = self.sp.library()["liked"]
+        self.assertEqual((liked["uri"], liked["name"], liked["kind"]), ("liked", "Liked Songs", "120 songs you liked"))
+        self.assertEqual(liked["art"], "cover-of-spotify:track:0")
+
+    def test_playing_liked_songs_queues_them_newest_first(self):
+        self.now_playing()
+        self.api.saved = ["spotify:track:%d" % n for n in range(120)]
+        self.assertTrue(self.sp.command("play", "liked")[0])
+        method, path, query, body = self.last_call()
+        self.assertEqual((method, path, query), ("PUT", "/me/player/play", {"device_id": "phone"}))
+        self.assertEqual(body, {"uris": self.api.saved})
+
+    def test_liked_songs_are_capped(self):
+        self.now_playing()
+        self.api.saved = ["spotify:track:%d" % n for n in range(mod.LIKED_MAX + 130)]
+        self.sp.command("play", "liked")
+        self.assertEqual(len(self.last_call()[3]["uris"]), mod.LIKED_MAX)
 
     def test_devices_put_the_dashboard_first(self):
         self.sp.set_local_device("dash")

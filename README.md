@@ -28,7 +28,9 @@ in Chrome inside the container instead. It appears in Spotify as a device
 streamed to the page, which plays it through the Hub's speaker.
 
 - The play button resumes your last Spotify session on that device.
-- The list button offers your playlists and what you played lately; the
+- The list button offers Liked Songs (your 300 most recently liked tracks:
+  Spotify's API cannot play the whole collection), your playlists and what you
+  played lately; the
   speaker button moves the music to any device Spotify offers.
 - Like, shuffle, repeat, tapping the progress bar to jump, and the next track
   are on the card; the album cover fills it while music plays.
