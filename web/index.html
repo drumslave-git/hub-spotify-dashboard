@@ -225,6 +225,36 @@
   .sheet-foot .pg svg { width: 28px; height: 28px; }
   .sheet-foot .pg:active { background: #2c313a; }
 
+  /* ------------------------------- Spotify's own app, full screen, as a picture */
+  .app {
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 6;
+    display: flex; background: #000;
+  }
+  .app-bar { width: 48px; flex: none; display: flex; flex-direction: column; align-items: center; padding: 6px 0; gap: 4px; background: #000; color: #b3b3b3; }
+  .app-bar button { width: 46px; height: 64px; border-radius: 12px; }
+  .app-bar button svg { width: 26px; height: 26px; }
+  .app-bar button:active, .app-bar button.on { background: rgba(255,255,255,0.16); color: #fff; }
+  .app-bar .gap { flex: 1; }
+  .app-view { position: relative; width: 976px; height: 600px; flex: none; overflow: hidden; }
+  .app-view canvas { display: block; width: 976px; height: 600px; touch-action: none; }
+  .app-msg {
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    padding: 40px; font-size: 22px; line-height: 1.4; color: var(--muted); pointer-events: none;
+  }
+  /* The Hub has no keyboard: this one types into the app. */
+  .kb {
+    position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 8px 10px;
+    background: #1c1c1e; box-shadow: 0 -8px 24px rgba(0,0,0,0.5);
+    display: flex; flex-direction: column; gap: 7px;
+  }
+  .kb-row { display: flex; gap: 6px; justify-content: center; }
+  .kb button { flex: 1 1 0; max-width: 84px; height: 50px; border-radius: 9px; background: #3a3a3c; font-size: 22px; }
+  .kb button:active { background: #6b6b70; transform: none; }
+  .kb button.wide { flex: 1.6 1 0; max-width: 140px; font-size: 17px; background: #2c2c2e; }
+  .kb button.space { flex: 5 1 0; max-width: 420px; font-size: 17px; }
+  .kb button svg { width: 24px; height: 24px; }
+
   /* ------------------------------------------------- night: a dim clock only */
   .night-clock {
     display: none;
@@ -280,6 +310,7 @@
       </div>
       <button class="pill" id="bLibrary" disabled><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>Browse</button>
       <button class="pill" id="bDevices" disabled><svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><circle cx="12" cy="14" r="4"/><line x1="12" y1="6" x2="12.01" y2="6"/></svg>Speakers</button>
+      <button class="chip" id="bApp" aria-label="Open the Spotify app" hidden><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
       <button class="go" id="bPlay" aria-label="Play" disabled><svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></svg></button>
     </div>
   </section>
@@ -332,6 +363,7 @@
         <div class="np-next" id="pNextUp"></div>
         <button class="pill" id="pLibrary" disabled><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span>Browse</span></button>
         <button class="pill" id="pDevices" disabled><svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><circle cx="12" cy="14" r="4"/><line x1="12" y1="6" x2="12.01" y2="6"/></svg><span id="pDeviceName">Speakers</span></button>
+        <button class="chip" id="pApp" aria-label="Open the Spotify app" hidden><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
       </div>
     </div>
   </section>
@@ -343,6 +375,22 @@
       <button class="pg" id="sheetBack" aria-label="Previous page"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
       <span id="sheetPage"></span>
       <button class="pg" id="sheetMore" aria-label="Next page"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
+    </div>
+  </div>
+
+  <div class="app" id="app" hidden>
+    <div class="app-bar">
+      <button id="appClose" aria-label="Back to the dashboard"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      <div class="gap"></div>
+      <button id="appBack" aria-label="Back"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+      <button id="appHome" aria-label="Spotify home"><svg viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></button>
+      <button id="appKeys" aria-label="Keyboard"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 15h10"/></svg></button>
+      <div class="gap"></div>
+    </div>
+    <div class="app-view">
+      <canvas id="appCanvas" width="976" height="600"></canvas>
+      <div class="app-msg" id="appMsg"></div>
+      <div class="kb" id="kb" hidden></div>
     </div>
   </div>
 </div>
@@ -685,6 +733,10 @@
     $('pNextUp').innerHTML = active && p.next
       ? 'Up next<b>' + esc(p.next.title) + (p.next.artist ? ' · ' + esc(p.next.artist) : '') + '</b>' : '';
     $('pDeviceName').textContent = (active && p.device) || 'Speakers';
+    var appState = (p && p.app && p.app.state) || 'off';
+    $('bApp').hidden = $('pApp').hidden = appState === 'off';
+    $('bApp').disabled = $('pApp').disabled = appState !== 'ready';
+    if (appOpen) drawAppMessage();
 
     drawProgress();
   }
@@ -927,6 +979,296 @@
     command(kind === 'devices' ? 'device' : 'play', row.value);
   });
 
+  // ------------------------------------------------- Spotify's own app
+  // The server runs Spotify's web app in its Chrome and streams the screen
+  // here as JPEG frames; taps, swipes and typing go back as input events.
+  var APP_W = 976, APP_H = 600, APP_IDLE = 5 * 60 * 1000;
+  var appOpen = false, appCtrl = null, appFrames = 0, appIdle, appDecoding = false, appNext = null;
+  var appCanvas = $('appCanvas'), appCtx = appCanvas.getContext('2d');
+
+  function openApp() {
+    if (appOpen) return;
+    appOpen = true;
+    appFrames = 0;
+    closeSheet();
+    appCtx.clearRect(0, 0, APP_W, APP_H);
+    $('app').hidden = false;
+    drawAppMessage();
+    streamApp();
+    bumpApp();
+    beat('app:open');
+  }
+  function closeApp() {
+    if (!appOpen) return;
+    appOpen = false;
+    $('app').hidden = true;
+    showKeyboard(false);
+    clearTimeout(appIdle);
+    stopGlide();
+    if (appCtrl) { try { appCtrl.abort(); } catch (e) {} }
+    appCtrl = null;
+    beat('app:close');
+  }
+  // Left alone, the app gives the screen back to the dashboard.
+  function bumpApp() {
+    clearTimeout(appIdle);
+    appIdle = setTimeout(closeApp, APP_IDLE);
+  }
+  function drawAppMessage() {
+    var state = player && player.app ? player.app.state : 'off';
+    $('appMsg').textContent = appFrames ? ''
+      : state === 'ready' ? 'Opening Spotify…'
+      : state === 'error' ? 'Spotify could not be opened here.'
+      : 'Spotify is starting…';
+  }
+
+  function streamApp() {
+    var ctrl = window.AbortController ? new AbortController() : {};
+    appCtrl = ctrl;
+    function again() {
+      setTimeout(function () { if (appOpen && appCtrl === ctrl) streamApp(); }, 2000);
+    }
+    fetch('/api/app/screen', { cache: 'no-store', signal: ctrl.signal }).then(function (r) {
+      if (!r.ok || !r.body) { again(); return; }
+      var reader = r.body.getReader(), buf = new Uint8Array(0);
+      (function next() {
+        // Not chained with return: an endless promise chain would never be freed.
+        reader.read().then(function (res) {
+          if (res.done) { again(); return; }
+          var joined = new Uint8Array(buf.length + res.value.length);
+          joined.set(buf, 0);
+          joined.set(res.value, buf.length);
+          buf = joined;
+          while (buf.length >= 4) {
+            var len = buf[0] * 16777216 + (buf[1] << 16) + (buf[2] << 8) + buf[3];
+            if (buf.length < 4 + len) break;
+            if (len) showFrame(buf.slice(4, 4 + len));
+            buf = buf.slice(4 + len);
+          }
+          next();
+        }, again);
+      })();
+    }, again);
+  }
+
+  // Only the newest picture matters: one decoding at a time, the rest skipped.
+  function showFrame(bytes) {
+    if (appDecoding) { appNext = bytes; return; }
+    appDecoding = true;
+    var blob = new Blob([bytes], { type: 'image/jpeg' });
+    function done() {
+      appDecoding = false;
+      if (!appFrames++) drawAppMessage();
+      if (appNext) { var n = appNext; appNext = null; showFrame(n); }
+    }
+    if (window.createImageBitmap) {
+      createImageBitmap(blob).then(function (bmp) {
+        if (appOpen) appCtx.drawImage(bmp, 0, 0, APP_W, APP_H);
+        if (bmp.close) bmp.close();
+        done();
+      }, done);
+    } else {
+      var url = URL.createObjectURL(blob), img = new Image();
+      img.onload = function () { if (appOpen) appCtx.drawImage(img, 0, 0, APP_W, APP_H); URL.revokeObjectURL(url); done(); };
+      img.onerror = function () { URL.revokeObjectURL(url); done(); };
+      img.src = url;
+    }
+  }
+
+  // ------------------------------------------------ input into the app
+  // Events go out in order, the ones that pile up during a request together.
+  var appQueue = [], appThen = null, appSending = false;
+  function sendApp(event, then) {
+    appQueue.push(event);
+    if (then) appThen = then;
+    flushApp();
+  }
+  function flushApp() {
+    if (appSending || !appQueue.length) return;
+    var batch = appQueue, then = appThen;
+    appQueue = []; appThen = null;
+    appSending = true;
+    fetch('/api/app/input', { method: 'POST', body: JSON.stringify(batch) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) { if (then) then(res); }, function () {})
+      .then(function () { appSending = false; flushApp(); });
+  }
+  function appPoint(e) {
+    var box = appCanvas.getBoundingClientRect();
+    return { x: Math.round((e.clientX - box.left) / box.width * APP_W),
+             y: Math.round((e.clientY - box.top) / box.height * APP_H) };
+  }
+
+  // A finger: a tap is a click, a swipe scrolls (with a little glide after
+  // letting go), holding still is a right click (Spotify's menu).
+  var finger = null, wheel = null, wheelTimer = null, glide = null;
+  function addWheel(x, y, dx, dy) {
+    if (!wheel) wheel = { type: 'wheel', x: x, y: y, dx: 0, dy: 0 };
+    wheel.dx += dx; wheel.dy += dy;
+    if (!wheelTimer) wheelTimer = setTimeout(function () {
+      wheelTimer = null;
+      var w = wheel; wheel = null;
+      if (w && (Math.abs(w.dx) >= 1 || Math.abs(w.dy) >= 1)) {
+        w.dx = Math.round(w.dx); w.dy = Math.round(w.dy);
+        sendApp(w);
+      }
+    }, 40);
+  }
+  function stopGlide() { if (glide) { clearInterval(glide); glide = null; } }
+
+  var mouseHeld = false, lastMove = 0;
+  appCanvas.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    bumpApp();
+    stopGlide();
+    var p = appPoint(e);
+    if (e.pointerType === 'mouse') {   // a desktop browser: real mouse presses, so dragging works too
+      if (e.button === 2) { sendApp({ type: 'right', x: p.x, y: p.y }); return; }
+      if (e.button !== 0) return;
+      mouseHeld = true;
+      sendApp({ type: 'down', x: p.x, y: p.y });
+      return;
+    }
+    try { appCanvas.setPointerCapture(e.pointerId); } catch (err) {}
+    var f = finger = { id: e.pointerId, x0: p.x, y0: p.y, x: p.x, y: p.y, t: Date.now(),
+                       moved: false, held: false, vx: 0, vy: 0 };
+    f.timer = setTimeout(function () {
+      if (finger === f && !f.moved) { f.held = true; sendApp({ type: 'right', x: f.x0, y: f.y0 }); }
+    }, 650);
+  });
+  appCanvas.addEventListener('pointermove', function (e) {
+    var p = appPoint(e);
+    if (e.pointerType === 'mouse') {
+      var now = Date.now();
+      if (now - lastMove < 40) return;   // hover is enough at 25 per second
+      lastMove = now;
+      sendApp({ type: mouseHeld ? 'drag' : 'move', x: p.x, y: p.y });
+      return;
+    }
+    var f = finger;
+    if (!f || f.id !== e.pointerId) return;
+    if (!f.moved && Math.abs(p.x - f.x0) + Math.abs(p.y - f.y0) > 14) { f.moved = true; clearTimeout(f.timer); }
+    if (f.moved && !f.held) {
+      var t = Date.now(), dt = Math.max(1, t - f.t);
+      var dx = f.x - p.x, dy = f.y - p.y;
+      f.vx = 0.6 * f.vx + 0.4 * dx / dt;
+      f.vy = 0.6 * f.vy + 0.4 * dy / dt;
+      addWheel(f.x0, f.y0, dx, dy);
+      f.t = t;
+    }
+    f.x = p.x; f.y = p.y;
+  });
+  function endFinger(e, cancelled) {
+    var p = appPoint(e);
+    if (e.pointerType === 'mouse') {
+      if (mouseHeld) { mouseHeld = false; sendApp({ type: 'up', x: p.x, y: p.y }, afterTap); }
+      return;
+    }
+    var f = finger;
+    if (!f || f.id !== e.pointerId) return;
+    finger = null;
+    clearTimeout(f.timer);
+    if (cancelled || f.held) return;
+    if (!f.moved) { sendApp({ type: 'tap', x: f.x0, y: f.y0 }, afterTap); return; }
+    // Keep scrolling for a moment, slowing down, like a real swipe.
+    var vx = f.vx, vy = f.vy;
+    if (Date.now() - f.t > 80 || Math.abs(vx) + Math.abs(vy) < 0.3) return;
+    glide = setInterval(function () {
+      vx *= 0.92; vy *= 0.92;
+      if (Math.abs(vx) + Math.abs(vy) < 0.08) { stopGlide(); return; }
+      addWheel(f.x0, f.y0, vx * 30, vy * 30);
+    }, 30);
+  }
+  appCanvas.addEventListener('pointerup', function (e) { endFinger(e, false); });
+  appCanvas.addEventListener('pointercancel', function (e) { endFinger(e, true); });
+  appCanvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  appCanvas.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    bumpApp();
+    var p = appPoint(e), k = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? APP_H : 1;
+    addWheel(p.x, p.y, e.deltaX * k, e.deltaY * k);
+  }, { passive: false });
+
+  // After a tap the server says whether it landed in a text field: on a
+  // touch screen the keyboard then comes up by itself (and goes when not).
+  var kbAuto = false;
+  function afterTap(res) {
+    if (!res || res.typing == null || !/CrKey|Android|Mobile/.test(navigator.userAgent)) return;
+    if (res.typing && $('kb').hidden) { showKeyboard(true); kbAuto = true; }
+    else if (!res.typing && kbAuto) showKeyboard(false);
+  }
+
+  // A desktop browser's own keyboard works too (and is how to sign in).
+  var KEY_NAMES = { Backspace: 1, Tab: 1, Enter: 1, Escape: 1, PageUp: 1, PageDown: 1, End: 1, Home: 1,
+                    ArrowLeft: 1, ArrowUp: 1, ArrowRight: 1, ArrowDown: 1, Delete: 1 };
+  document.addEventListener('keydown', function (e) {
+    if (!appOpen || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key.length === 1) sendApp({ type: 'text', text: e.key });
+    else if (KEY_NAMES[e.key]) sendApp({ type: 'key', key: e.key });
+    else return;
+    e.preventDefault();
+    bumpApp();
+  });
+  document.addEventListener('paste', function (e) {
+    if (!appOpen) return;
+    var text = e.clipboardData && e.clipboardData.getData('text');
+    if (text) { e.preventDefault(); sendApp({ type: 'text', text: text }); }
+  });
+
+  // ------------------------------------------------- on-screen keyboard
+  var KB = {
+    en: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'],
+    uk: ['йцукенгшщзхї', 'фівапролджє', 'ячсмитьбю'],
+    num: ['1234567890', '-/:;()&@"\'', '.,?!#%+=']
+  };
+  var kbLayout = 'en', kbLetters = 'en';
+  var BACKSPACE = '<svg viewBox="0 0 24 24"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>';
+  var HIDE = '<svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>';
+  function drawKeyboard() {
+    var rows = KB[kbLayout], html = '';
+    rows.forEach(function (row, i) {
+      html += '<div class="kb-row">';
+      row.split('').forEach(function (ch) { html += '<button data-t="' + esc(ch) + '">' + esc(ch) + '</button>'; });
+      if (i === rows.length - 1) html += '<button class="wide" data-k="Backspace" aria-label="Delete">' + BACKSPACE + '</button>';
+      html += '</div>';
+    });
+    html += '<div class="kb-row">' +
+      '<button class="wide" data-mode="' + (kbLayout === 'num' ? kbLetters : 'num') + '">' + (kbLayout === 'num' ? 'abc' : '123') + '</button>' +
+      '<button class="wide" data-mode="' + (kbLetters === 'en' ? 'uk' : 'en') + '">' + (kbLetters === 'en' ? 'УКР' : 'ENG') + '</button>' +
+      '<button class="space" data-t=" ">space</button>' +
+      '<button class="wide" data-k="Enter">Enter</button>' +
+      '<button class="wide" data-hide="1" aria-label="Hide the keyboard">' + HIDE + '</button></div>';
+    $('kb').innerHTML = html;
+  }
+  function showKeyboard(on) {
+    $('kb').hidden = !on;
+    $('appKeys').classList.toggle('on', on);
+    kbAuto = false;
+    if (on) drawKeyboard();
+  }
+  $('kb').addEventListener('pointerdown', function (e) {
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if (!b) return;
+    e.preventDefault();
+    bumpApp();
+    if (b.getAttribute('data-t') != null) sendApp({ type: 'text', text: b.getAttribute('data-t') });
+    else if (b.getAttribute('data-k')) sendApp({ type: 'key', key: b.getAttribute('data-k') });
+    else if (b.getAttribute('data-hide')) showKeyboard(false);
+    else if (b.getAttribute('data-mode')) {
+      var mode = b.getAttribute('data-mode');
+      if (mode !== 'num') kbLetters = mode;
+      kbLayout = mode;
+      drawKeyboard();
+    }
+  });
+
+  $('bApp').addEventListener('click', openApp);
+  $('pApp').addEventListener('click', openApp);
+  $('appClose').addEventListener('click', closeApp);
+  $('appBack').addEventListener('click', function () { bumpApp(); sendApp({ type: 'nav', to: 'back' }); });
+  $('appHome').addEventListener('click', function () { bumpApp(); sendApp({ type: 'nav', to: 'home' }); });
+  $('appKeys').addEventListener('click', function () { bumpApp(); showKeyboard($('kb').hidden); });
+
   // ------------------------------------------------- sound on this device
   // The server runs the Spotify player; this page plays its sound. The audio
   // arrives as plain 16-bit stereo samples and is queued on the Web Audio
@@ -1085,6 +1427,7 @@
       player: !player ? 'none' : !player.connected ? 'not-connected' : player.active
         ? (player.playing ? 'playing' : 'paused') + ':' + player.device : 'idle',
       audio: Object.assign({}, audio, { kb: Math.round(audio.kb), played: Math.round(audio.played) }),
+      app: { open: appOpen, frames: appFrames },
       ua: navigator.userAgent
     };
     if (event) body.event = event;

@@ -27,6 +27,7 @@ import pychromecast
 from pychromecast.controllers.dashcast import DashCastController
 
 from player import SILENCE, LocalPlayer, wav_header
+from screen import AppScreen
 from spotify import Spotify
 
 ROOT = Path(__file__).parent
@@ -91,6 +92,9 @@ def load_config() -> dict:
     cfg["cast_app_id"] = (env.get("CAST_APP_ID") or cfg.get("cast_app_id") or "").strip()
     takeover = env.get("VOICE_TAKEOVER") or str(cfg.get("voice_takeover", "true"))
     cfg["voice_takeover"] = takeover.lower() in ("1", "true", "yes")
+    # Spotify's full web app, opened full screen from a button on the page.
+    app = env.get("SPOTIFY_APP") or str(cfg.get("spotify_app", "true"))
+    cfg["spotify_app"] = app.lower() in ("1", "true", "yes")
     cfg["data_dir"] = env.get("DATA_DIR") or cfg.get("data_dir") or str(ROOT / "data")
     return cfg
 
@@ -325,8 +329,20 @@ spotify = Spotify(
 )
 
 
+# Spotify's full web app, in a second tab of the player's Chrome.
+app_screen = AppScreen() if CONFIG["spotify_app"] else None
+
 # The dashboard's own Spotify device; its audio is streamed to the page.
-local = LocalPlayer(CONFIG["spotify"]["player_name"], CONFIG["port"], note=keeper.note)
+local = LocalPlayer(
+    CONFIG["spotify"]["player_name"], CONFIG["port"], note=keeper.note,
+    profile=Path(CONFIG["data_dir"]) / "chrome", screen=app_screen,
+)
+
+
+def app_info() -> dict:
+    if not app_screen or not local.enabled:
+        return {"state": "off"}
+    return app_screen.info()
 
 
 def link_player() -> None:
@@ -409,13 +425,15 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/health":
             self._json({"ok": True})
         elif path == "/api/player":
-            self._json({**spotify.state(), "local": local.info()})
+            self._json({**spotify.state(), "local": local.info(), "app": app_info()})
         elif path == "/api/library":
             self._json(spotify.library() if spotify.connected else {"recent": [], "playlists": []})
         elif path == "/api/devices":
             self._json({"devices": spotify.devices() if spotify.connected else []})
         elif path in ("/api/audio", "/api/audio.wav"):
             self._audio(wav=path.endswith(".wav"))
+        elif path == "/api/app/screen":
+            self._app_screen()
         elif path == "/api/spotify/token":
             # Only for the player page in Chrome on this machine: a token is
             # the key to the account, so nobody else on the network gets one.
@@ -471,6 +489,7 @@ class Handler(BaseHTTPRequestHandler):
                     "player": spotify.state(),
                     "spotify_errors": list(spotify.errors),
                     "local": local.debug(),
+                    "app": app_screen.debug() if app_screen else None,
                     "events": keeper.events,
                 }
             )
@@ -508,6 +527,35 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 pass
             self._json({"ok": True})
+        elif path == "/api/app/input":
+            # Taps, swipes and typing for the Spotify app, one event or a list.
+            if app_info()["state"] != "ready":
+                self._json({"ok": False}, 503)
+                return
+            try:
+                events = json.loads(raw)
+            except ValueError:
+                events = None
+            if isinstance(events, dict):
+                events = [events]
+            if not isinstance(events, list):
+                self._json({"ok": False}, 400)
+                return
+            ok, last = True, ""
+            for event in events[:50]:
+                if isinstance(event, dict):
+                    try:
+                        ok = app_screen.input(event) and ok
+                        last = str(event.get("type"))
+                    except (TypeError, ValueError):
+                        pass
+            answer = {"ok": ok}
+            if last in ("tap", "up"):
+                # Give the click a moment to land, then say whether it put
+                # the cursor in a text field.
+                time.sleep(0.25)
+                answer["typing"] = app_screen.typing()
+            self._json(answer)
         elif path == "/api/player":
             action, ok, message = "?", False, "Bad request."
             try:
@@ -558,6 +606,27 @@ class Handler(BaseHTTPRequestHandler):
             pass  # the listener went away
         finally:
             local.hub.unsubscribe(feed)
+
+    def _app_screen(self) -> None:
+        """The Spotify app's screen as an endless run of JPEG frames, each
+        after its length (4 bytes, big-endian); length 0 only keeps the line open."""
+        if app_info()["state"] == "off":
+            self._json({"error": "the Spotify app is not available here"}, 404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")  # ask proxies not to hold it back
+        self.end_headers()
+
+        def write(data: bytes) -> None:
+            self.wfile.write(data)
+            self.wfile.flush()
+
+        try:
+            app_screen.watch(write)
+        except OSError:
+            pass  # the viewer went away
 
     def _static(self, path: str) -> None:
         rel = "index.html" if path in ("", "/") else path.lstrip("/")

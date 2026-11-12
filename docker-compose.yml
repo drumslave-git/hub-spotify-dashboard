@@ -12,7 +12,8 @@ services:
     # page is served on PORT.
     network_mode: host
 
-    # Holds the Spotify sign-in (spotify.json). The container makes the folder
+    # Holds the Spotify sign-ins (spotify.json, and Spotify's web app in
+    # chrome/). The container makes the folder
     # writable for its own user on start.
     volumes:
       - "${DATA_PATH:-./data}:/app/data"
@@ -63,6 +64,8 @@ services:
       CAST_APP_ID: ${CAST_APP_ID:-}
       # Move Spotify sessions started on the Hub (e.g. by voice) into the dashboard.
       VOICE_TAKEOVER: ${VOICE_TAKEOVER:-true}
+      # The grid button that opens Spotify's full web app on the Hub.
+      SPOTIFY_APP: ${SPOTIFY_APP:-true}
 
     healthcheck:
       # 127.0.0.1 (not localhost): the server binds IPv4 only.
