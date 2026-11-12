@@ -575,7 +575,40 @@
         ));
       });
     });
-    Promise.all(jobs).then(function () { beat('drm:' + JSON.stringify(drm)); });
+    Promise.all(jobs).then(function () {
+      // Go all the way, as a real player must: create the keys, open a
+      // session and ask it for a licence request. Each step that worked is
+      // listed, so a failure shows exactly where this browser stops.
+      var steps = [];
+      var system = [0xed, 0xef, 0x8b, 0xa9, 0x79, 0xd6, 0x4a, 0xce, 0xa3, 0xc8, 0x27, 0xdc, 0xd5, 0x1d, 0x21, 0xed];
+      var data = [0x12, 0x10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+      var pssh = new Uint8Array([0, 0, 0, 32 + data.length, 0x70, 0x73, 0x73, 0x68, 0, 0, 0, 0]
+        .concat(system, [0, 0, 0, data.length], data));
+      var config = [{
+        initDataTypes: ['cenc'],
+        audioCapabilities: [{ contentType: aac, robustness: 'SW_SECURE_CRYPTO' }],
+        distinctiveIdentifier: 'optional', persistentState: 'optional', sessionTypes: ['temporary']
+      }];
+      return navigator.requestMediaKeySystemAccess('com.widevine.alpha', config)
+        .then(function (access) { steps.push('access'); return access.createMediaKeys(); })
+        .then(function (keys) {
+          steps.push('keys');
+          var session = keys.createSession();
+          steps.push('session');
+          return new Promise(function (resolve, reject) {
+            session.addEventListener('message', function (e) {
+              steps.push('message:' + e.messageType + ':' + e.message.byteLength);
+              resolve();
+            });
+            session.generateRequest('cenc', pssh).then(function () {
+              steps.push('request');
+              setTimeout(resolve, 8000);
+            }, reject);
+          });
+        })
+        .catch(function (e) { steps.push('failed:' + ((e && e.name) || '') + ':' + ((e && e.message) || e)); })
+        .then(function () { drm.full = steps; beat('drm:' + JSON.stringify(drm)); });
+    });
   }
 
   // ------------------------------------------------------------ heartbeat
