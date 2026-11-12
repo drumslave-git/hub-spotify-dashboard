@@ -49,14 +49,24 @@ def load_config() -> dict:
     weather["longitude"] = float(env.get("WEATHER_LON") or weather.get("longitude") or 0)
     cfg["weather"] = weather
 
+    # The address the Hub loads the page from. If not given, use this machine's
+    # address on the route to the Hub (correct with host networking; in a
+    # bridged container it would be the container's address, so set PUBLIC_URL).
+    cfg["public_url"] = env.get("PUBLIC_URL") or cfg.get("public_url")
+    if not cfg["public_url"]:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect((cfg["hub_host"], 8009))
+            cfg["public_url"] = f"http://{probe.getsockname()[0]}:{cfg['port']}/"
+
     sp = dict(cfg.get("spotify") or {})
     sp["client_id"] = env.get("SPOTIFY_CLIENT_ID") or sp.get("client_id") or ""
-    # Spotify only accepts https redirect addresses, or http on 127.0.0.1.
-    sp["redirect_uri"] = (
-        env.get("SPOTIFY_REDIRECT_URI")
-        or sp.get("redirect_uri")
-        or f"http://127.0.0.1:{cfg['port']}/api/spotify/callback"
-    )
+    # Spotify only accepts https redirect addresses, or http on 127.0.0.1, so
+    # the default follows the dashboard's own address when that is https.
+    if cfg["public_url"].startswith("https://"):
+        default_redirect = cfg["public_url"].rstrip("/") + "/api/spotify/callback"
+    else:
+        default_redirect = f"http://127.0.0.1:{cfg['port']}/api/spotify/callback"
+    sp["redirect_uri"] = env.get("SPOTIFY_REDIRECT_URI") or sp.get("redirect_uri") or default_redirect
     # Spotify device to start music on when nothing is playing and the page's
     # own player is not available.
     sp["device"] = env.get("SPOTIFY_DEVICE") or sp.get("device") or ""
@@ -70,15 +80,6 @@ def load_config() -> dict:
     takeover = env.get("VOICE_TAKEOVER") or str(cfg.get("voice_takeover", "true"))
     cfg["voice_takeover"] = takeover.lower() in ("1", "true", "yes")
     cfg["data_dir"] = env.get("DATA_DIR") or cfg.get("data_dir") or str(ROOT / "data")
-
-    # The address the Hub loads the page from. If not given, use this machine's
-    # address on the route to the Hub (correct with host networking; in a
-    # bridged container it would be the container's address, so set PUBLIC_URL).
-    cfg["public_url"] = env.get("PUBLIC_URL") or cfg.get("public_url")
-    if not cfg["public_url"]:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
-            probe.connect((cfg["hub_host"], 8009))
-            cfg["public_url"] = f"http://{probe.getsockname()[0]}:{cfg['port']}/"
     return cfg
 
 

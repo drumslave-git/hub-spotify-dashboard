@@ -8,9 +8,8 @@ services:
     container_name: hubdash
     restart: unless-stopped
 
-    # Host networking (Linux): lets the service work out the address the Hub
-    # should load the page from when PUBLIC_URL is empty. The page is served
-    # on PORT.
+    # Host networking (Linux): the service talks to the Hub on the LAN and the
+    # page is served on PORT.
     network_mode: host
 
     # Holds the Spotify sign-in (spotify.json). Must be writable by uid 1000.
@@ -18,32 +17,40 @@ services:
       - "${DATA_PATH:-./data}:/app/data"
 
     environment:
-      TZ: ${TZ:-UTC}
-      PORT: ${PORT:-8765}
+      # ---- Required: compose refuses to start until these are set in .env ----
 
       # The Nest Hub's IP. Give it a fixed DHCP lease on the router.
-      HUB_HOST: ${HUB_HOST:-}
+      HUB_HOST: ${HUB_HOST:?set HUB_HOST in .env to the Nest Hub's IP address}
 
-      # Address the Hub loads the dashboard from. Use the HTTPS name for
-      # Spotify playback inside the dashboard, e.g. https://hub.example.com/
-      # Empty = auto-detect this server's LAN address (plain http).
-      PUBLIC_URL: ${PUBLIC_URL:-}
+      # Address the Hub loads the dashboard from. Must be https with a publicly
+      # trusted certificate for Spotify to play inside the dashboard,
+      # e.g. https://hub.example.com/
+      PUBLIC_URL: ${PUBLIC_URL:?set PUBLIC_URL in .env to the dashboard's https address}
 
-      WEATHER_NAME: ${WEATHER_NAME:-London}
-      WEATHER_LAT: ${WEATHER_LAT:-51.5074}
-      WEATHER_LON: ${WEATHER_LON:--0.1278}
+      # Timezone of the clock, e.g. Europe/London
+      TZ: ${TZ:?set TZ in .env to your timezone, e.g. Europe/London}
+
+      # Weather location: the label shown on screen and its coordinates.
+      WEATHER_NAME: ${WEATHER_NAME:?set WEATHER_NAME in .env to your town's name}
+      WEATHER_LAT: ${WEATHER_LAT:?set WEATHER_LAT in .env to your latitude}
+      WEATHER_LON: ${WEATHER_LON:?set WEATHER_LON in .env to your longitude}
+
+      # Client ID of your Spotify app (developer.spotify.com). No secret needed.
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:?set SPOTIFY_CLIENT_ID in .env to your Spotify app's client ID}
+
+      # ---- Optional: these have working defaults ----
+
+      PORT: ${PORT:-8765}
       HOUR12: ${HOUR12:-false}
 
-      # Spotify app (developer.spotify.com). Only the client ID is needed.
-      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
-      # Where Spotify sends the browser after sign-in. Must match the app's
-      # settings exactly; Spotify allows https, or http on 127.0.0.1 only.
+      # Where Spotify sends the browser after sign-in. Empty = PUBLIC_URL +
+      # api/spotify/callback, which is what to enter in the Spotify app.
       SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI:-}
       # Name the dashboard's own player shows up as in Spotify.
       SPOTIFY_PLAYER_NAME: ${SPOTIFY_PLAYER_NAME:-Dashboard}
-      # Optional: another Spotify device to start music on when the dashboard
-      # cannot play by itself. Leave empty; naming the Hub here would make
-      # Spotify's own app take over the Hub's screen.
+      # Another Spotify device to start music on when the dashboard cannot play
+      # by itself. Leave empty; naming the Hub here would make Spotify's own
+      # app take over the Hub's screen.
       SPOTIFY_DEVICE: ${SPOTIFY_DEVICE:-}
 
       # Your own registered Cast app ID (empty = the public DashCast app).

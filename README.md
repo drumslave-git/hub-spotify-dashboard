@@ -42,13 +42,13 @@ it only trusts public certificate authorities. Then set
 1. At developer.spotify.com/dashboard create an app. Add the redirect URI
    `https://hub.example.com/api/spotify/callback` (your address) and tick
    "Web API" and "Web Playback SDK". Spotify Premium is required.
-2. Set `SPOTIFY_CLIENT_ID` to the app's client ID and `SPOTIFY_REDIRECT_URI`
-   to that same redirect address.
+2. Set `SPOTIFY_CLIENT_ID` to the app's client ID. The redirect address is
+   derived from `PUBLIC_URL`; set `SPOTIFY_REDIRECT_URI` only if it differs.
 3. Open `https://hub.example.com/api/spotify/login` in a browser and sign in.
    The sign-in is saved in `data/spotify.json`.
 
 Spotify only allows `https://` redirect addresses, or `http://127.0.0.1` (the
-default when `SPOTIFY_REDIRECT_URI` is empty, for running locally).
+default when the dashboard's address is plain http, for running locally).
 
 ## Your own Cast app (optional, for voice-started music)
 
@@ -95,19 +95,31 @@ To update after a release, run that last command again. To build from source
 instead of pulling, copy the whole repository and use
 `docker compose up -d --build`.
 
-Settings are environment variables with defaults in `docker-compose.yml`;
-override them in `.env`. The ones that matter:
+Settings are environment variables, set in `.env`. Compose refuses to start
+(and names the variable) while a required one is missing.
+
+Required:
 
 | Variable | Meaning |
 |---|---|
 | `HUB_HOST` | The Hub's IP address. Give it a fixed DHCP lease. |
-| `PUBLIC_URL` | Address the Hub loads the page from. Empty = auto-detect the server's LAN address. |
-| `PORT` | Port the page is served on (default 8765). Must be reachable from the Hub. |
-| `WEATHER_NAME`, `WEATHER_LAT`, `WEATHER_LON` | Weather location. |
-| `SPOTIFY_CLIENT_ID`, `SPOTIFY_REDIRECT_URI` | Your Spotify app's client ID and its redirect address. |
-| `SPOTIFY_PLAYER_NAME` | Name of the dashboard's own player in Spotify (default "Dashboard"). |
-| `CAST_APP_ID` | Your own Cast app ID; empty uses the public DashCast app. |
-| `VOICE_TAKEOVER` | Move Spotify sessions started on the Hub into the dashboard (default true). |
+| `PUBLIC_URL` | The dashboard's HTTPS address, which the Hub loads the page from. |
+| `TZ` | Timezone of the clock, e.g. `Europe/London`. |
+| `WEATHER_NAME`, `WEATHER_LAT`, `WEATHER_LON` | Weather location: label and coordinates. |
+| `SPOTIFY_CLIENT_ID` | Your Spotify app's client ID. |
+
+Optional:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PORT` | `8765` | Port the page is served on; the reverse proxy points here. |
+| `HOUR12` | `false` | 12-hour clock. |
+| `SPOTIFY_REDIRECT_URI` | `PUBLIC_URL` + `api/spotify/callback` | Where Spotify returns after sign-in. |
+| `SPOTIFY_PLAYER_NAME` | `Dashboard` | Name of the dashboard's own player in Spotify. |
+| `CAST_APP_ID` | public DashCast app | Your own Cast app ID. |
+| `VOICE_TAKEOVER` | `true` | Move Spotify sessions started on the Hub into the dashboard. |
+| `HUBDASH_IMAGE` | published `:latest` | Image to run, e.g. to pin a release. |
+| `DATA_PATH` | `./data` | Folder that holds the Spotify sign-in. |
 
 Only one instance may point at a Hub; two would keep re-casting over each other.
 

@@ -54,9 +54,17 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(cfg["cast_app_id"], "ABCD1234")
         self.assertFalse(cfg["voice_takeover"])
 
-    def test_spotify_redirect_defaults_to_loopback(self):
+    def test_spotify_redirect_follows_an_https_address(self):
         cfg = self.load()
+        self.assertEqual(cfg["spotify"]["redirect_uri"], "https://hub.example.com/api/spotify/callback")
+
+    def test_spotify_redirect_is_loopback_on_plain_http(self):
+        cfg = self.load(PUBLIC_URL="http://192.0.2.20:9000/")
         self.assertEqual(cfg["spotify"]["redirect_uri"], "http://127.0.0.1:9000/api/spotify/callback")
+
+    def test_spotify_redirect_can_be_set(self):
+        cfg = self.load(SPOTIFY_REDIRECT_URI="https://other.example.com/cb")
+        self.assertEqual(cfg["spotify"]["redirect_uri"], "https://other.example.com/cb")
 
     def test_empty_values_count_as_unset(self):
         """Compose passes unset variables as empty strings."""
