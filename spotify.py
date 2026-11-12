@@ -219,6 +219,7 @@ class Spotify:
             "art": art,
             "duration_ms": item.get("duration_ms") or 0,
             "uri": item.get("uri"),
+            "album_uri": (item.get("album") or {}).get("uri"),
         }
 
     def _fetch_state(self) -> dict:
@@ -234,6 +235,7 @@ class Spotify:
                 "volume": device.get("volume_percent"),
                 "can_volume": bool(device.get("supports_volume")),
                 "progress_ms": p.get("progress_ms") or 0,
+                "context_uri": (p.get("context") or {}).get("uri"),
                 "at": int(time.time() * 1000),
             }
         if status in (200, 202, 204):
@@ -246,15 +248,27 @@ class Spotify:
     def _last_played(self) -> dict | None:
         if time.time() - self._last_at < 600:
             return self._last
-        status, p = self._api("GET", "/me/player/recently-played", {"limit": 1})
+        status, p = self._api("GET", "/me/player/recently-played", {"limit": 20})
         if status == 200 and p and p.get("items"):
-            entry = p["items"][0]
+            # The latest thing played as part of a playlist or album, so the
+            # music carries on afterwards; a lone track only if there is no such.
+            items = p["items"]
+            entry = next((i for i in items if (i.get("context") or {}).get("uri")), items[0])
             self._last = {
                 **self._describe(entry.get("track")),
                 "context_uri": (entry.get("context") or {}).get("uri"),
             }
         self._last_at = time.time()
         return self._last
+
+    @staticmethod
+    def _play_body(track: dict) -> dict:
+        """What to ask Spotify to play for a remembered track: its playlist or
+        album starting at that track, so something follows when it ends."""
+        context = track.get("context_uri") or track.get("album_uri")
+        if context:
+            return {"context_uri": context, "offset": {"uri": track["uri"]}}
+        return {"uris": [track["uri"]]}
 
     def state(self) -> dict:
         base = {
@@ -363,26 +377,25 @@ class Spotify:
                 return d
         return None
 
-    def _resume(self) -> tuple[bool, str]:
-        """Start playback when nothing is active: continue where Spotify left
-        off, or failing that, replay the most recent track's playlist/album."""
+    def _resume(self, fresh: bool = False) -> tuple[bool, str]:
+        """Start playback when nothing is playing: continue where Spotify left
+        off, or failing that (or when `fresh`), start the most recent track's
+        playlist or album."""
         device = self._pick_device()
         if device is None:
             return False, "The dashboard can't play music by itself yet."
-        status, _ = self._api("PUT", "/me/player", body={"device_ids": [device["id"]], "play": True})
-        if status in (200, 202, 204):
-            time.sleep(1.5)
-            _, p = self._api("GET", "/me/player")
-            if p and p.get("is_playing"):
-                return True, ""
+        if not fresh:
+            status, _ = self._api("PUT", "/me/player", body={"device_ids": [device["id"]], "play": True})
+            if status in (200, 202, 204):
+                time.sleep(1.5)
+                _, p = self._api("GET", "/me/player")
+                if p and p.get("is_playing"):
+                    return True, ""
+        self._last_at = 0  # look again: what was played last may have changed
         last = self._last_played()
         if not last or not last.get("uri"):
             return False, "Nothing to resume yet. Play something on Spotify once."
-        body = (
-            {"context_uri": last["context_uri"], "offset": {"uri": last["uri"]}}
-            if last.get("context_uri")
-            else {"uris": [last["uri"]]}
-        )
+        body = self._play_body(last)
         status, payload = self._api("PUT", "/me/player/play", {"device_id": device["id"]}, body)
         if status not in (200, 202, 204) and "context_uri" in body:
             status, payload = self._api(
@@ -409,13 +422,21 @@ class Spotify:
             if action == "toggle":
                 if current.get("active") and current.get("playing"):
                     status, payload = self._api("PUT", "/me/player/pause")
+                    fresh = False
                 elif current.get("active"):
-                    status, payload = self._api("PUT", "/me/player/play")
-                    if status == 404:
+                    # A single track that has run out (no playlist or album
+                    # behind it): start something that carries on instead of
+                    # replaying that one track.
+                    fresh = not current.get("context_uri") and not current.get("progress_ms")
+                    if fresh:
                         status, payload = None, None
+                    else:
+                        status, payload = self._api("PUT", "/me/player/play")
+                        if status == 404:
+                            status, payload = None, None
                 else:
-                    status, payload = None, None
-                result = self._resume() if status is None else (
+                    fresh, status, payload = False, None, None
+                result = self._resume(fresh) if status is None else (
                     (True, "") if status in (200, 202, 204) else (False, self._reason(status, payload))
                 )
             elif action in ("next", "prev"):

@@ -19,6 +19,7 @@ class FakeApi:
             {"id": "phone", "name": "Phone", "is_active": False},
         ]
         self.player = None  # None = nothing active
+        self.recent = None  # None = one track from a playlist
 
     def __call__(self, method, path, query=None, body=None):
         self.calls.append((method, path, query, body))
@@ -33,6 +34,8 @@ class FakeApi:
                 "artists": [{"name": "A"}],
                 "album": {"name": "Al", "images": [{"url": "big"}, {"url": "mid"}]},
             }
+            if self.recent is not None:
+                return 200, {"items": self.recent}
             return 200, {"items": [{"track": track, "context": {"uri": "spotify:playlist:p1"}}]}
         if path == "/me/player/play":
             self.player = {
@@ -120,6 +123,48 @@ class SpotifyTests(unittest.TestCase):
         self.assertEqual(plays[0][3]["context_uri"], "spotify:album:a1")
         self.assertEqual(plays[0][3]["offset"], {"uri": "spotify:track:v"})
         self.assertEqual(self.sp._takeover_until, 0)  # one-shot
+
+    @staticmethod
+    def played(name, context=None, album="spotify:album:" + "a1"):
+        track = {"name": name, "uri": "spotify:track:" + name, "artists": [], "album": {"uri": album, "images": []}}
+        return {"track": track, "context": {"uri": context} if context else None}
+
+    def play_calls(self):
+        return [c for c in self.api.calls if c[0] == "PUT" and c[1] == "/me/player/play"]
+
+    def test_resume_prefers_the_latest_playlist_over_a_lone_track(self):
+        self.sp.set_local_device("dash")
+        self.api.devices.append({"id": "dash", "name": "Dashboard"})
+        self.api.recent = [self.played("lone"), self.played("song", "spotify:playlist:mix")]
+        ok, _ = self.sp._resume(fresh=True)
+        self.assertTrue(ok)
+        self.assertEqual(self.play_calls()[-1][3],
+                         {"context_uri": "spotify:playlist:mix", "offset": {"uri": "spotify:track:song"}})
+
+    def test_lone_track_continues_with_its_album(self):
+        self.sp.set_local_device("dash")
+        self.api.devices.append({"id": "dash", "name": "Dashboard"})
+        self.api.recent = [self.played("lone")]
+        self.assertTrue(self.sp._resume(fresh=True)[0])
+        self.assertEqual(self.play_calls()[-1][3],
+                         {"context_uri": "spotify:album:a1", "offset": {"uri": "spotify:track:lone"}})
+
+    def test_play_after_a_lone_track_ran_out_starts_something_that_continues(self):
+        self.sp.set_local_device("dash")
+        self.api.devices.append({"id": "dash", "name": "Dashboard"})
+        self.api.recent = [self.played("lone"), self.played("song", "spotify:playlist:mix")]
+        self.api.player = {"is_playing": False, "progress_ms": 0, "context": None,
+                           "item": {"name": "lone", "uri": "spotify:track:lone"},
+                           "device": {"id": "dash", "name": "Dashboard"}}
+        self.assertTrue(self.sp.command("toggle")[0])
+        self.assertEqual(self.play_calls()[-1][3]["context_uri"], "spotify:playlist:mix")
+
+    def test_play_resumes_a_paused_playlist_in_place(self):
+        self.api.player = {"is_playing": False, "progress_ms": 42000, "context": {"uri": "spotify:playlist:mix"},
+                           "item": {"name": "song", "uri": "spotify:track:song"},
+                           "device": {"id": "phone", "name": "Phone"}}
+        self.assertTrue(self.sp.command("toggle")[0])
+        self.assertEqual(self.play_calls()[-1][2:], (None, None))  # plain resume, nothing chosen
 
     def test_in_page_player_expires_when_page_goes_quiet(self):
         self.sp.set_local_device("dash")
