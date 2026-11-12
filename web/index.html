@@ -25,6 +25,9 @@
     -webkit-user-select: none; user-select: none;
     -webkit-tap-highlight-color: transparent;
   }
+  /* On a smart display the Cast system adds its own media-control layer over
+     the page. It is invisible here but would swallow every tap. */
+  touch-controls { display: none !important; pointer-events: none !important; }
   .dash {
     height: 100vh;
     padding: 4vh 3vw;
@@ -594,6 +597,8 @@
       up: Math.round((Date.now() - loadedAt) / 1000),
       cast: castState,
       touches: touches,
+      input: input,
+      layers: foreignLayers(),
       visible: document.visibilityState,
       w: innerWidth, h: innerHeight, dpr: devicePixelRatio,
       // layout check, measured on the device itself
@@ -656,6 +661,33 @@
     // Any touch unlocks sound for the in-page player.
     unlockSound();
   });
+
+  // What input this page really gets, and what else sits on top of it: both
+  // go out with the heartbeat. Listening on the window in the capture phase
+  // sees an event even if something further down would stop it.
+  var input = {};
+  ['pointerdown', 'touchstart', 'mousedown', 'click', 'keydown'].forEach(function (type) {
+    window.addEventListener(type, function (e) {
+      input[type] = (input[type] || 0) + 1;
+      input.last = type + ' on ' + ((e.target && (e.target.id || e.target.tagName)) || '?');
+    }, true);
+  });
+  function foreignLayers() {
+    // Elements the Cast system added next to the dashboard itself.
+    return [].filter.call(document.body.children, function (el) {
+      return !/^(SCRIPT|STYLE)$/.test(el.tagName) && !el.classList.contains('dash') && el.id !== 'stale';
+    }).map(function (el) {
+      var box = el.getBoundingClientRect();
+      return el.tagName.toLowerCase() + ' ' + Math.round(box.width) + 'x' + Math.round(box.height) +
+        ' display=' + getComputedStyle(el).display;
+    });
+  }
+  // The control layer can be added (or re-shown) at any time; keep it out of the way.
+  new MutationObserver(function () {
+    [].forEach.call(document.querySelectorAll('touch-controls'), function (el) {
+      el.style.setProperty('display', 'none', 'important');
+    });
+  }).observe(document.documentElement, { childList: true, subtree: true });
   document.addEventListener('visibilitychange', function () { beat('visibility:' + document.visibilityState); });
   window.addEventListener('error', function (e) { beat('js-error: ' + e.message); });
 
