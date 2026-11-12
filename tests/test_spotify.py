@@ -45,7 +45,7 @@ class FakeApi:
             }
             return 204, None
         if path in ("/me/player", "/me/player/pause", "/me/player/next",
-                    "/me/player/previous", "/me/player/volume"):
+                    "/me/player/previous"):
             return 204, None
         return 404, None
 

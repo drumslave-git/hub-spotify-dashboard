@@ -8,6 +8,12 @@
       "port": 8765
     },
     {
+      "name": "hubdash-preview-alt",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-c", "import os, sys; os.environ['PORT'] = '8791'; sys.argv = ['server.py', '--no-keeper']; import server; server.main()"],
+      "port": 8791
+    },
+    {
       "name": "hubdash-tone",
       "runtimeExecutable": ".venv\\Scripts\\python.exe",
       "runtimeArgs": ["server.py", "--no-keeper", "--test-tone"],

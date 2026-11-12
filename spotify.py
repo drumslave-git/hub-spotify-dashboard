@@ -232,8 +232,6 @@ class Spotify:
                 **self._describe(p["item"]),
                 "device": device.get("name") or "",
                 "device_id": device.get("id"),
-                "volume": device.get("volume_percent"),
-                "can_volume": bool(device.get("supports_volume")),
                 "progress_ms": p.get("progress_ms") or 0,
                 "context_uri": (p.get("context") or {}).get("uri"),
                 "at": int(time.time() * 1000),
@@ -414,7 +412,7 @@ class Spotify:
             return "Spotify is rate limiting; try again in a moment."
         return message or f"Spotify error {status}"
 
-    def command(self, action: str, value=None) -> tuple[bool, str]:
+    def command(self, action: str) -> tuple[bool, str]:
         if not self.connected:
             return False, "Spotify is not connected."
         with self._lock:
@@ -442,10 +440,6 @@ class Spotify:
             elif action in ("next", "prev"):
                 path = "/me/player/next" if action == "next" else "/me/player/previous"
                 status, payload = self._api("POST", path)
-                result = (True, "") if status in (200, 202, 204) else (False, self._reason(status, payload))
-            elif action == "volume":
-                level = max(0, min(100, int(value)))
-                status, payload = self._api("PUT", "/me/player/volume", {"volume_percent": level})
                 result = (True, "") if status in (200, 202, 204) else (False, self._reason(status, payload))
             else:
                 result = (False, "Unknown action.")

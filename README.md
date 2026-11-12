@@ -8,7 +8,8 @@ time, date and weather on the left, a Spotify player on the right.
   stops reporting in. Other Cast apps are left alone; the dashboard returns
   when the Hub goes idle again.
 - `spotify.py` handles the one-time Spotify sign-in and talks to the official
-  Spotify Web API (what's playing, play/pause, skip, volume, resume).
+  Spotify Web API (what's playing, play/pause, skip, resume). Volume is
+  left to the Hub's own buttons.
 - `player.py` is the dashboard's own Spotify player: it runs Chrome on the
   server with Spotify's official web player (`web/engine.html`), records
   Chrome's sound and serves it as a stream.

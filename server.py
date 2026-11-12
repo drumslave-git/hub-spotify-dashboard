@@ -487,7 +487,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 req = json.loads(raw)
                 action = str(req.get("action"))
-                ok, message = spotify.command(action, req.get("value"))
+                ok, message = spotify.command(action)
             except Exception as err:
                 log.warning("player command failed: %r", err)
                 message = "Something went wrong."

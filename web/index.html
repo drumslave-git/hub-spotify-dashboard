@@ -97,7 +97,7 @@
   }
   .p-top { display: flex; align-items: center; gap: 2vw; min-width: 0; }
   .art {
-    width: 31vh; height: 31vh; flex: none;
+    width: 33vh; height: 33vh; flex: none;
     border-radius: 2vh;
     background: var(--raised) center / cover no-repeat;
     display: flex; align-items: center; justify-content: center;
@@ -121,27 +121,23 @@
   .bar { flex: 1; height: 0.9vh; border-radius: 1vh; background: var(--line); overflow: hidden; }
   .bar i { display: block; height: 100%; width: 0; background: var(--text); border-radius: 1vh; }
 
-  .p-ctl { display: flex; align-items: center; justify-content: center; gap: 3.4vw; }
+  .p-ctl { display: flex; align-items: center; justify-content: center; gap: 4vw; }
   .btn {
-    width: 13vh; height: 13vh; flex: none;
+    width: 16vh; height: 16vh; flex: none;
     border: 0; border-radius: 50%;
     background: transparent; color: var(--text);
     display: flex; align-items: center; justify-content: center;
     -webkit-appearance: none; appearance: none; outline: none;
   }
-  .btn svg { width: 5.6vh; height: 5.6vh; fill: currentColor; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  .btn.main { width: 17vh; height: 17vh; background: var(--text); color: var(--bg); }
-  .btn.main svg { width: 6.6vh; height: 6.6vh; }
+  .btn svg { width: 6.6vh; height: 6.6vh; fill: currentColor; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .btn.main { width: 21vh; height: 21vh; background: var(--text); color: var(--bg); }
+  .btn.main svg { width: 8vh; height: 8vh; }
   .btn:active { background: var(--raised); }
   /* A press is on its way to Spotify: further presses wait for it. */
   .player.busy .btn { opacity: 0.5; }
   .btn.main:active { background: #c9c6c0; }
   .btn[disabled] { opacity: 0.22; }
 
-  .p-vol { display: flex; align-items: center; gap: 0.8vw; }
-  .p-vol.off { visibility: hidden; }
-  .p-vol .btn { width: 9.5vh; height: 9.5vh; }
-  .p-vol .btn svg { width: 4.4vh; height: 4.4vh; }
 
   .stale { position: fixed; left: 1.2vw; bottom: 0.6vh; font-size: 2.4vh; color: var(--muted); }
   .stale[hidden] { display: none; }
@@ -189,12 +185,6 @@
       <button class="btn" id="pPrev" aria-label="Previous" disabled><svg viewBox="0 0 24 24"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg></button>
       <button class="btn main" id="pToggle" aria-label="Play or pause" disabled><svg viewBox="0 0 24 24" id="pToggleIcon"><polygon points="6 3 20 12 6 21 6 3"/></svg></button>
       <button class="btn" id="pNext" aria-label="Next" disabled><svg viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg></button>
-    </div>
-
-    <div class="p-vol off" id="pVol">
-      <button class="btn" id="pVolDown" aria-label="Volume down"><svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
-      <div class="bar"><i id="pVolFill"></i></div>
-      <button class="btn" id="pVolUp" aria-label="Volume up"><svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><line x1="12" y1="5" x2="12" y2="19"/></svg></button>
     </div>
   </section>
 </main>
@@ -390,9 +380,6 @@
     $('pNext').disabled = !active;
 
     $('pProgress').classList.toggle('off', !active || !p.duration_ms);
-    var canVol = active && p.can_volume && p.volume != null;
-    $('pVol').classList.toggle('off', !canVol);
-    if (canVol) $('pVolFill').style.width = p.volume + '%';
     drawProgress();
   }
 
@@ -408,7 +395,7 @@
 
   var DEMO = {
     playing: { configured: true, connected: true, active: true, playing: true, title: 'Never Catch Me (feat. Kendrick Lamar)',
-      artist: 'Flying Lotus, Kendrick Lamar', device: 'Kitchen display', volume: 55, can_volume: true,
+      artist: 'Flying Lotus, Kendrick Lamar', device: 'Kitchen display',
       progress_ms: 83000, duration_ms: 234000, at: Date.now(), art: null },
     idle: { configured: true, connected: true, active: false, playing: false, local_ready: true,
       last: { title: 'Quiet', artist: 'Kuoga.', art: null } },
@@ -434,9 +421,9 @@
     if (on) busyTimer = setTimeout(function () { setBusy(false); }, 6000);
   }
 
-  function command(action, value) {
+  function command(action) {
     if (!player || !player.connected) return;
-    if (busy && action !== 'volume') return;
+    if (busy) return;
     var wasPlaying = player.active && player.playing;
     // Show the result straight away; the next poll confirms the real state.
     if (action === 'toggle' && player.active) {
@@ -444,33 +431,30 @@
       player.at = Date.now() + offset;
       player.playing = !player.playing;
     }
-    if (action === 'volume') player.volume = value;
     renderPlayer(player);
     if (action === 'toggle' && !wasPlaying) note('Starting…');
     holdUntil = Date.now() + 2500;
     if (params.get('demo')) return;
-    if (action !== 'volume') setBusy(true);
+    setBusy(true);
 
     // Being inside a tap is what lets the browser start sound.
     unlockSound();
     // Pausing or skipping music that plays here: cut the queued sound at once
     // instead of letting the last half second trail on.
-    if (ctx && player.on_dashboard && action !== 'volume' && (action !== 'toggle' || wasPlaying)) cutSound(600);
-    fetch('/api/player', { method: 'POST', body: JSON.stringify({ action: action, value: value }) })
+    if (ctx && player.on_dashboard && (action !== 'toggle' || wasPlaying)) cutSound(600);
+    fetch('/api/player', { method: 'POST', body: JSON.stringify({ action: action }) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (!res.ok) { holdUntil = 0; pollPlayer(); note(res.message || 'That did not work.', true); }
       })
       .catch(function () { holdUntil = 0; note('The dashboard server is not responding.', true); })
-      .then(function () { if (action !== 'volume') setBusy(false); });
+      .then(function () { setBusy(false); });
     setTimeout(pollPlayer, 2600);
   }
 
   $('pToggle').addEventListener('click', function () { command('toggle'); });
   $('pPrev').addEventListener('click', function () { command('prev'); });
   $('pNext').addEventListener('click', function () { command('next'); });
-  $('pVolDown').addEventListener('click', function () { command('volume', Math.max(0, player.volume - 6)); });
-  $('pVolUp').addEventListener('click', function () { command('volume', Math.min(100, player.volume + 6)); });
 
   // ------------------------------------------------- sound on this device
   // The server runs the Spotify player; this page plays its sound. The audio
