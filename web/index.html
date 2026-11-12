@@ -133,6 +133,8 @@
   .btn.main { width: 17vh; height: 17vh; background: var(--text); color: var(--bg); }
   .btn.main svg { width: 6.6vh; height: 6.6vh; }
   .btn:active { background: var(--raised); }
+  /* A press is on its way to Spotify: further presses wait for it. */
+  .player.busy .btn { opacity: 0.5; }
   .btn.main:active { background: #c9c6c0; }
   .btn[disabled] { opacity: 0.22; }
 
@@ -422,8 +424,19 @@
       .catch(function () {});
   }
 
+  // One press at a time: starting music takes a second or two, and extra
+  // impatient taps would otherwise each flip play and pause again.
+  var busy = false, busyTimer;
+  function setBusy(on) {
+    busy = on;
+    $('player').classList.toggle('busy', on);
+    clearTimeout(busyTimer);
+    if (on) busyTimer = setTimeout(function () { setBusy(false); }, 6000);
+  }
+
   function command(action, value) {
     if (!player || !player.connected) return;
+    if (busy && action !== 'volume') return;
     var wasPlaying = player.active && player.playing;
     // Show the result straight away; the next poll confirms the real state.
     if (action === 'toggle' && player.active) {
@@ -433,9 +446,10 @@
     }
     if (action === 'volume') player.volume = value;
     renderPlayer(player);
-    if (action === 'toggle' && !player.active) note('Starting…');
+    if (action === 'toggle' && !wasPlaying) note('Starting…');
     holdUntil = Date.now() + 2500;
     if (params.get('demo')) return;
+    if (action !== 'volume') setBusy(true);
 
     // Being inside a tap is what lets the browser start sound.
     unlockSound();
@@ -447,7 +461,8 @@
       .then(function (res) {
         if (!res.ok) { holdUntil = 0; pollPlayer(); note(res.message || 'That did not work.', true); }
       })
-      .catch(function () { holdUntil = 0; note('The dashboard server is not responding.', true); });
+      .catch(function () { holdUntil = 0; note('The dashboard server is not responding.', true); })
+      .then(function () { if (action !== 'volume') setBusy(false); });
     setTimeout(pollPlayer, 2600);
   }
 
