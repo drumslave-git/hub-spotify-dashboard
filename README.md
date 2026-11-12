@@ -16,7 +16,9 @@ Spotify player on the right.
   Chrome's sound and serves it as a stream.
 - `web/index.html` is the page on the Hub. It registers itself as a Cast
   receiver with the idle timeout disabled, which is what stops the Hub from
-  closing it, and it plays the server's audio stream.
+  closing it, and it plays the server's audio stream. While music plays the
+  page takes the colour of the album cover, picked with Google's
+  `material-color-utilities` (bundled in `web/vendor/material-color.js`).
 
 ## How music works
 

@@ -4,23 +4,31 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kitchen display</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #0b0d10;
-    --panel: #14171c;
+    --panel: #121418;
     --raised: #1e2229;
     --line: #262b33;
     --text: #f3f0ea;
     --muted: #8b9199;
     --warm: #f0b25a;
     --cool: #7db4e8;
+    /* Taken from the album cover (see pickTint): a deep tone for the
+       background and a light tone of the same hue for the main buttons. */
+    --tint: #24272d;
+    --tint-hi: #eceef2;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  [hidden] { display: none !important; }
   html, body {
     height: 100%;
     background: var(--bg);
     color: var(--text);
-    font-family: "Google Sans", Roboto, "Segoe UI", system-ui, sans-serif;
+    font-family: "DM Sans", "Google Sans", Roboto, "Segoe UI", system-ui, sans-serif;
     overflow: hidden;
     -webkit-user-select: none; user-select: none;
     -webkit-tap-highlight-color: transparent;
@@ -28,212 +36,181 @@
     touch-action: manipulation;
     -webkit-touch-callout: none;
   }
+  body { transition: background-color 0.8s; }
+  body.np-on { background: var(--tint); }
   /* On a smart display the Cast system adds its own media-control layer over
      the page. It is invisible here but would swallow every tap. */
   touch-controls { display: none !important; pointer-events: none !important; }
-  .dash {
-    height: 100vh;
-    padding: 4vh 3vw;
-    display: grid;
-    grid-template-columns: 46fr 54fr;
-    column-gap: 3vw;
-  }
 
-  /* ------------------------------------------------ left: time, date, weather */
-  .info {
-    display: flex; flex-direction: column; justify-content: space-between;
-    min-width: 0; min-height: 0;
-    padding: 0.5vh 0 0 1vw;
-  }
-  .time {
-    font-size: 27vh;
-    line-height: 0.95;
-    font-weight: 300;
-    letter-spacing: -0.03em;
+  /* Everything is laid out in pixels for the Hub's 1024 x 600 screen, and the
+     whole stage is scaled to fit any other window (fitStage). */
+  .stage {
+    position: absolute; left: 50%; top: 50%;
+    width: 1024px; height: 600px; margin: -300px 0 0 -512px;
+    overflow: hidden;
     font-variant-numeric: tabular-nums;
-    white-space: nowrap;
   }
-  .time .colon { color: var(--muted); padding: 0 0.02em; position: relative; top: -0.06em; }
-  .time .ampm { font-size: 0.2em; color: var(--muted); margin-left: 0.3em; letter-spacing: 0; }
-  .date { margin-top: 1.2vh; font-size: 4.6vh; color: var(--muted); padding-left: 0.4vw; white-space: nowrap; }
-  .date b { color: var(--text); font-weight: 400; }
+  .view { position: absolute; top: 0; right: 0; bottom: 0; left: 0; transition: opacity 0.45s, visibility 0s; }
+  /* Music playing: the now-playing view takes the screen. */
+  .np { opacity: 0; visibility: hidden; transition: opacity 0.45s, visibility 0s 0.45s, background-color 0.8s; }
+  body.np-on .np { opacity: 1; visibility: visible; transition: opacity 0.45s, visibility 0s, background-color 0.8s; }
+  body.np-on .home { opacity: 0; visibility: hidden; transition: opacity 0.45s, visibility 0s 0.45s; }
 
-  .now { padding-left: 0.4vw; }
-  .now-top { display: flex; align-items: center; gap: 1.8vw; }
-  .now-icon { width: 12vh; height: 12vh; flex: none; }
-  .now-temp { font-size: 15vh; font-weight: 300; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-  .now-text { min-width: 0; padding-left: 0.6vw; }
-  .now-desc { font-size: 4.2vh; white-space: nowrap; }
-  .now-meta { margin-top: 0.8vh; font-size: 3vh; color: var(--muted); line-height: 1.45; white-space: nowrap; }
-
-  .strip {
-    display: flex; align-items: stretch;
-    background: var(--panel);
-    border-radius: 2.6vh;
-    padding: 1.6vh 0.4vw 1.5vh;
-  }
-  .cell {
-    flex: 1; min-width: 0;
-    display: flex; flex-direction: column; align-items: center; gap: 0.5vh;
-    font-size: 3.3vh;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
-  .cell .when { color: var(--muted); font-size: 2.7vh; }
-  .cell .ico { width: 4.6vh; height: 4.6vh; flex: none; }
-  .cell .lo { color: var(--muted); margin-left: 0.4em; }
-  .sep { width: 1px; background: var(--line); margin: 0 0.3vw; }
-
-  /* Rain in the next 12 hours: one bar per hour, as tall as it is likely. */
-  .rain { padding: 0 0.4vw; }
-  .rain-text { font-size: 2.9vh; color: var(--muted); white-space: nowrap; }
-  .rain-text b { color: var(--cool); font-weight: 400; }
-  .rain-bars { margin-top: 1vh; height: 4.6vh; display: flex; align-items: flex-end; gap: 0.5vw; }
-  .rain-bars i { flex: 1; min-height: 0.5vh; border-radius: 0.5vh; background: var(--line); }
-  .rain-bars i.wet { background: var(--cool); }
-  .rain-hours { margin-top: 0.5vh; display: flex; font-size: 2.3vh; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .rain-hours span { flex: 1; }
-
-  svg.wx { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+  svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  svg.wx { width: 100%; height: 100%; stroke-width: 1.5; overflow: visible; }
   svg.wx .sun { stroke: var(--warm); }
   svg.wx .drop { stroke: var(--cool); }
   svg.wx .cover { fill: var(--bg); }
-  .strip svg.wx .cover { fill: var(--panel); }
+  .np svg.wx .cover { fill: var(--tint); }
 
-  /* ------------------------------------------------------ right: media player */
-  .player {
-    position: relative; overflow: hidden;
-    background: var(--panel);
-    border-radius: 3.2vh;
-    padding: 2.6vh 2vw 2.4vh;
-    display: flex; flex-direction: column; justify-content: space-between;
-    min-width: 0; min-height: 0;
-  }
-  /* The cover fills the card; a shade keeps the text and buttons readable. */
-  .p-bg {
-    position: absolute; top: 0; right: 0; bottom: 0; left: 0;
-    background: var(--panel) center / cover no-repeat;
-    display: flex; align-items: center; justify-content: center;
-    color: var(--line);
-  }
-  .p-bg svg { width: 16vh; height: 16vh; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
-  .p-bg.has-art svg { display: none; }
-  .p-bg.has-art::after {
-    content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
-    background: linear-gradient(to bottom,
-      rgba(11,13,16,0.86) 0%, rgba(11,13,16,0.55) 24%, rgba(11,13,16,0.18) 40%,
-      rgba(11,13,16,0.30) 52%, rgba(11,13,16,0.82) 70%, rgba(11,13,16,0.94) 100%);
-  }
-  .idle .p-bg.has-art::after { background: rgba(11,13,16,0.78); }
-  .p-head, .p-foot { position: relative; }
-
-  .p-head { display: flex; align-items: flex-start; gap: 1.4vw; min-width: 0; }
-  .p-meta { flex: 1; min-width: 0; text-shadow: 0 1px 6px rgba(0,0,0,0.7); }
-  .p-title, .p-artist, .p-next {
-    display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
-    overflow-wrap: anywhere;
-  }
-  .p-title { font-size: 4.9vh; line-height: 1.16; -webkit-line-clamp: 2; }
-  .p-artist { margin-top: 0.8vh; font-size: 3.5vh; line-height: 1.25; color: #c9cdd3; -webkit-line-clamp: 1; }
-  .p-note { margin-top: 1vh; font-size: 2.8vh; line-height: 1.3; color: #a9aeb6; }
-  .p-note.alert { color: var(--warm); }
-  .p-tools { display: flex; gap: 1.4vw; flex: none; }
-
-  .p-next { font-size: 2.8vh; line-height: 1.3; color: #c9cdd3; -webkit-line-clamp: 1; min-height: 3.6vh; text-shadow: 0 1px 6px rgba(0,0,0,0.7); }
-  .p-sub { margin-top: 0.6vh; display: flex; align-items: center; gap: 1.4vw; }
-  .p-sub.off { visibility: hidden; }
-  .grow { flex: 1; }
-
-  /* Small round buttons: tools, shuffle, repeat, like. */
-  .chip {
-    width: 12vh; height: 12vh; flex: none;      /* 72 px on the Hub: a fingertip */
-    border: 0; border-radius: 50%;
-    background: rgba(11,13,16,0.55); color: var(--text);
-    display: flex; align-items: center; justify-content: center;
+  /* ------------------------------------------------------------- buttons */
+  button {
+    border: 0; font: inherit; color: inherit; background: none;
+    display: flex; align-items: center; justify-content: center; flex: none;
     -webkit-appearance: none; appearance: none; outline: none;
-    transition: transform 0.08s, background 0.08s;
+    transition: transform 0.08s, background-color 0.08s, opacity 0.2s;
   }
-  .chip svg { width: 5.2vh; height: 5.2vh; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   /* A press must be seen at once, before Spotify has answered. */
-  .chip:active { background: rgba(243,240,234,0.28); transform: scale(0.92); }
-  .chip.on { color: var(--warm); }
+  button:active { transform: scale(0.93); }
+  button[disabled] { opacity: 0.3; }
+  /* Round 72 px buttons: a fingertip on the Hub. */
+  .chip { width: 72px; height: 72px; border-radius: 50%; background: rgba(255,255,255,0.13); }
+  .chip svg { width: 28px; height: 28px; }
+  .chip:active { background: rgba(255,255,255,0.32); }
+  .chip.on { background: var(--tint-hi); color: var(--tint); }
   .chip.on.fill svg { fill: currentColor; }
   .chip .one { display: none; }
   .chip.single .one { display: inline; }
-  .chip[disabled] { opacity: 0.3; }
+  .pill { height: 72px; padding: 0 24px 0 20px; gap: 10px; border-radius: 36px; background: rgba(255,255,255,0.14); font-size: 18px; }
+  .pill svg { width: 24px; height: 24px; }
+  .pill:active { background: rgba(255,255,255,0.32); }
+  .big { width: 88px; height: 88px; border-radius: 50%; }
+  .big svg { width: 42px; height: 42px; fill: currentColor; stroke-width: 2.4; }
+  .big:active { background: rgba(255,255,255,0.18); }
+  .main { width: 104px; height: 104px; border-radius: 50%; background: var(--tint-hi); color: var(--tint); }
+  .main svg { width: 44px; height: 44px; fill: currentColor; stroke: none; }
+  .go { width: 112px; height: 72px; border-radius: 36px; background: var(--tint-hi); color: var(--tint); }
+  .go svg { width: 30px; height: 30px; fill: currentColor; stroke: none; }
+  .main:active, .go:active { background: #fff; }
+  /* A press is on its way to Spotify: further presses wait for it. */
+  body.busy .big, body.busy .main, body.busy .go { opacity: 0.5; }
 
-  .p-progress { display: flex; align-items: center; gap: 1.4vw; font-size: 3.2vh; color: #dfe2e6; font-variant-numeric: tabular-nums; text-shadow: 0 1px 6px rgba(0,0,0,0.7); }
-  .p-progress.off { visibility: hidden; }
-  .p-progress span { min-width: 3.4em; }
-  #pDur { text-align: right; }
+  /* ------------------------------------- home: time, weather, resume bar */
+  .home { padding: 30px 32px 28px; display: flex; flex-direction: column; gap: 22px; }
+  .home-top { flex: 1; min-height: 0; display: flex; justify-content: space-between; gap: 40px; padding: 0 4px; }
+  .home-left { display: flex; flex-direction: column; justify-content: space-between; min-width: 0; }
+  .time { font-size: 196px; font-weight: 300; line-height: 0.84; letter-spacing: -0.05em; white-space: nowrap; }
+  .time .colon { color: #5f656d; }
+  .time .ampm { font-size: 0.2em; color: var(--muted); margin-left: 0.3em; letter-spacing: 0; }
+  .date { margin-top: 22px; font-size: 24px; color: var(--muted); white-space: nowrap; }
+  .date b { color: var(--text); font-weight: 400; }
+  .now { display: flex; align-items: center; gap: 14px; }
+  .now-icon { width: 56px; height: 56px; flex: none; }
+  .now-temp { font-size: 68px; font-weight: 300; line-height: 1; letter-spacing: -0.04em; }
+  .now-text { min-width: 0; padding-left: 2px; }
+  .now-desc { font-size: 20px; white-space: nowrap; }
+  .now-meta { margin-top: 3px; font-size: 15px; color: var(--muted); white-space: nowrap; }
+
+  .home-right { width: 340px; flex: none; display: flex; flex-direction: column; justify-content: flex-end; }
+  /* Rain in the next 12 hours: one bar per hour, as tall as it is likely. */
+  .rain-text { font-size: 16px; color: var(--muted); white-space: nowrap; }
+  .rain-text b { color: var(--cool); font-weight: 400; }
+  .rain-bars { margin-top: 8px; height: 28px; display: flex; align-items: flex-end; gap: 5px; }
+  .rain-bars i { flex: 1; min-height: 3px; border-radius: 3px; background: var(--line); }
+  .rain-bars i.wet { background: var(--cool); }
+  .rain-hours { margin-top: 4px; display: flex; font-size: 13px; color: var(--muted); }
+  .rain-hours span { flex: 1; }
+  .fc { margin-top: 14px; }
+  .fc-row { display: flex; align-items: center; gap: 14px; height: 42px; border-top: 1px solid var(--raised); font-size: 18px; white-space: nowrap; }
+  .fc-row .when { width: 56px; font-size: 15px; color: var(--muted); }
+  .fc-row .ico { width: 22px; height: 22px; flex: none; }
+  .fc-row .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .fc-row .lo { color: var(--muted); margin-left: 0.3em; }
+
+  .bar {
+    height: 104px; flex: none; padding: 16px; border-radius: 26px;
+    display: flex; align-items: center; gap: 16px;
+    background: var(--tint); color: #fff;
+    transition: background-color 0.8s;
+  }
+  .art { background: rgba(255,255,255,0.1) center / cover no-repeat; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.35); }
+  .art.has-art svg { display: none; }
+  .bar .art { width: 72px; height: 72px; flex: none; border-radius: 10px; }
+  .bar .art svg { width: 32px; height: 32px; stroke-width: 1.6; }
+  .bar-words { flex: 1; min-width: 0; }
+  .bar-title, .bar-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-title { font-size: 21px; font-weight: 600; }
+  .bar-sub { margin-top: 4px; font-size: 16px; color: rgba(255,255,255,0.75); }
+  .bar-sub.alert { color: var(--warm); }
+
+  /* ------------------------------------------- now playing: cover first */
+  .np { padding: 24px; display: flex; gap: 28px; background: var(--tint); color: #fff; }
+  .np .art { width: 552px; height: 552px; flex: none; border-radius: 16px; box-shadow: 0 20px 48px rgba(0,0,0,0.35); }
+  .np .art svg { width: 120px; height: 120px; stroke-width: 1.2; }
+  .np-side { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  /* Time and weather shrink to one quiet line while music plays. */
+  .mini { display: flex; justify-content: space-between; align-items: flex-start; padding-top: 2px; color: rgba(255,255,255,0.78); }
+  .mini-time { font-size: 52px; font-weight: 300; line-height: 0.95; letter-spacing: -0.04em; color: #fff; white-space: nowrap; }
+  .mini-date, .mini-rain { margin-top: 6px; font-size: 15px; white-space: nowrap; }
+  .mini-right { text-align: right; min-width: 0; }
+  .mini-wx { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+  .mini-icon { width: 30px; height: 30px; color: #fff; }
+  .mini-temp { font-size: 38px; font-weight: 300; line-height: 1; letter-spacing: -0.03em; color: #fff; }
+  .np-meta { margin-top: auto; }
+  .np-note { font-size: 15px; color: rgba(255,255,255,0.7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .np-note.alert { color: var(--warm); }
+  .np-title { margin-top: 8px; font-size: 31px; font-weight: 600; line-height: 1.12; letter-spacing: -0.015em; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+  .np-artist, .np-next { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .np-artist { margin-top: 6px; font-size: 19px; color: rgba(255,255,255,0.75); }
+  .np-next { margin-top: 6px; font-size: 15px; color: rgba(255,255,255,0.6); min-height: 1.3em; }
   /* The seek bar: a thick track with a handle, in a strip tall enough to
      land a finger on. Tap anywhere on it, or drag the handle. */
-  .seek { flex: 1; height: 10vh; position: relative; display: flex; align-items: center; touch-action: none; }
-  .bar { flex: 1; height: 2.2vh; border-radius: 1.1vh; background: rgba(255,255,255,0.26); overflow: hidden; }
-  .bar i { display: block; height: 100%; width: 0; background: var(--text); }
+  .seek { margin-top: 10px; height: 48px; position: relative; display: flex; align-items: center; touch-action: none; }
+  .track { flex: 1; height: 14px; border-radius: 7px; background: rgba(255,255,255,0.2); overflow: hidden; }
+  .track i { display: block; height: 100%; width: 0; background: var(--tint-hi); }
   .knob {
     position: absolute; top: 50%; left: 0;
-    width: 5.6vh; height: 5.6vh; margin: -2.8vh 0 0 -2.8vh;
-    border-radius: 50%; background: var(--text);
-    box-shadow: 0 0.3vh 1.2vh rgba(0,0,0,0.55);
+    width: 32px; height: 32px; margin: -16px 0 0 -16px;
+    border-radius: 50%; background: var(--tint-hi);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.35);
     transition: transform 0.08s;
   }
   .seek.drag .knob { transform: scale(1.35); }
-  .seek.drag .bar i { background: var(--warm); }
+  .times { display: flex; justify-content: space-between; font-size: 14px; color: rgba(255,255,255,0.75); }
+  .transport { margin-top: 6px; display: flex; align-items: center; justify-content: center; gap: 28px; }
+  .tools { margin-top: 14px; display: flex; justify-content: space-between; }
 
-  .p-ctl { display: flex; align-items: center; justify-content: center; gap: 5vw; }
-  .btn {
-    width: 15vh; height: 15vh; flex: none;
-    border: 0; border-radius: 50%;
-    background: transparent; color: var(--text);
-    display: flex; align-items: center; justify-content: center;
-    -webkit-appearance: none; appearance: none; outline: none;
-    transition: transform 0.08s, background 0.08s;
-  }
-  .btn svg { width: 6.4vh; height: 6.4vh; fill: currentColor; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  .btn.main { width: 19vh; height: 19vh; background: var(--text); color: var(--bg); }
-  .btn.main svg { width: 7.4vh; height: 7.4vh; }
-  .btn:active { background: rgba(243,240,234,0.22); transform: scale(0.93); }
-  /* A press is on its way to Spotify: further presses wait for it. */
-  .player.busy .btn { opacity: 0.5; }
-  .btn.main:active { background: #c9c6c0; transform: scale(0.93); }
-  .btn[disabled] { opacity: 0.22; }
-
-  /* A list over the card: what to play, or where to play it. Paged instead
+  /* A list over the screen: what to play, or where to play it. Paged instead
      of scrolled, so it does not depend on the device's touch scrolling. */
   .sheet {
-    position: absolute; top: 0; right: 0; bottom: 0; left: 0;
-    background: var(--panel);
-    padding: 1.6vh 1.4vw 1.6vh;
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 5;
+    background: var(--panel); color: var(--text);
+    padding: 20px 24px;
     display: flex; flex-direction: column;
   }
-  .sheet[hidden] { display: none; }
-  .sheet-head { display: flex; align-items: center; font-size: 4.2vh; padding-left: 0.6vw; }
-  .sheet-head .chip { background: var(--raised); }
+  .sheet-head { height: 72px; display: flex; align-items: center; gap: 16px; font-size: 28px; font-weight: 500; padding-left: 8px; }
   .sheet-head span { flex: 1; }
-  .sheet-list { flex: 1; min-height: 0; margin-top: 0.4vh; }
-  .row {
-    height: 12vh; width: 100%;
-    display: flex; align-items: center; gap: 1.4vw;
-    padding: 0 0.8vw; border: 0; border-radius: 2vh;
-    background: transparent; color: var(--text); text-align: left;
-    font: inherit; -webkit-appearance: none; appearance: none; outline: none;
+  .sheet-list {
+    flex: 1; min-height: 0; margin-top: 12px;
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 84px; gap: 8px 16px; align-content: start;
   }
-  .row:active { background: rgba(243,240,234,0.16); }
-  .row .thumb { width: 9.6vh; height: 9.6vh; flex: none; border-radius: 1.2vh; background: var(--raised) center / cover no-repeat; display: flex; align-items: center; justify-content: center; color: var(--muted); }
-  .row .thumb svg { width: 4.6vh; height: 4.6vh; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .row { width: 100%; height: 84px; display: flex; align-items: center; justify-content: flex-start; gap: 16px; padding: 0 12px; border-radius: 16px; text-align: left; }
+  .row:active { background: rgba(255,255,255,0.1); }
+  .row .thumb { width: 64px; height: 64px; flex: none; border-radius: 10px; background: var(--raised) center / cover no-repeat; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+  .row .thumb svg { width: 28px; height: 28px; stroke-width: 1.8; }
   .row .words { min-width: 0; flex: 1; }
-  .row .name, .row .sub { display: block; }
-  .row .name { font-size: 3.6vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .row .sub { margin-top: 0.3vh; font-size: 2.6vh; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .name, .row .sub { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .name { font-size: 20px; }
+  .row .sub { margin-top: 3px; font-size: 15px; color: var(--muted); }
   .row.now .sub { color: var(--warm); }
-  .sheet-empty { padding: 3vh 0.8vw; font-size: 3.2vh; line-height: 1.4; color: var(--muted); }
-  .sheet-foot { display: flex; align-items: center; gap: 1.2vw; font-size: 3vh; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .sheet-empty { grid-column: 1 / -1; padding: 16px 12px; font-size: 20px; line-height: 1.4; color: var(--muted); }
+  .sheet-foot { margin-top: 12px; display: flex; align-items: center; gap: 16px; font-size: 18px; color: var(--muted); }
   .sheet-foot.off { visibility: hidden; }
-  .sheet-foot span { min-width: 4.5em; text-align: center; }
+  .sheet-foot span { min-width: 5em; text-align: center; }
   /* Wide page buttons rather than small arrows. */
-  .sheet-foot .chip { flex: 1; width: auto; height: 10.5vh; border-radius: 2.2vh; background: var(--raised); }
-  .sheet-foot .chip[disabled] { opacity: 0.3; }
+  .sheet-foot .pg { flex: 1; height: 72px; border-radius: 20px; background: var(--raised); }
+  .sheet-foot .pg svg { width: 28px; height: 28px; }
+  .sheet-foot .pg:active { background: #2c313a; }
 
   /* ------------------------------------------------- night: a dim clock only */
   .night-clock {
@@ -244,95 +221,113 @@
   }
   .night-clock .time { font-size: 40vh; }
   .night-clock .time .colon { color: #2e3034; }
-  .night-clock .date { color: #33363a; padding: 0; }
+  .night-clock .date { color: #33363a; font-size: 4.6vh; }
   .night-clock .date b { color: #4a4d52; }
+  body.night { background: #000; }
   body.night .night-clock { display: flex; }
-  body.night .dash { visibility: hidden; }
+  body.night .stage { visibility: hidden; }
 
-  .stale { position: fixed; left: 1.2vw; bottom: 0.6vh; font-size: 2.4vh; color: var(--muted); }
-  .stale[hidden] { display: none; }
+  .stale { position: fixed; left: 12px; bottom: 4px; font-size: 14px; color: var(--muted); }
 </style>
 </head>
 <body>
-<main class="dash">
-  <section class="info" id="info">
-    <div>
-      <div class="time" id="time">--<span class="colon">:</span>--</div>
-      <div class="date" id="date">&nbsp;</div>
-    </div>
-
-    <div class="now">
-      <div class="now-top">
-        <div class="now-icon" id="nowIcon"></div>
-        <div class="now-temp" id="nowTemp">--°</div>
-        <div class="now-text">
-          <div class="now-desc" id="nowDesc">&nbsp;</div>
-          <div class="now-meta" id="nowMeta">&nbsp;</div>
+<div class="stage" id="stage">
+  <section class="view home" id="home">
+    <div class="home-top">
+      <div class="home-left" id="info">
+        <div>
+          <div class="time" id="time">--<span class="colon">:</span>--</div>
+          <div class="date" id="date">&nbsp;</div>
+        </div>
+        <div class="now">
+          <div class="now-icon" id="nowIcon"></div>
+          <div class="now-temp" id="nowTemp">--°</div>
+          <div class="now-text">
+            <div class="now-desc" id="nowDesc">&nbsp;</div>
+            <div class="now-meta" id="nowMeta">&nbsp;</div>
+          </div>
         </div>
       </div>
+      <div class="home-right">
+        <div class="rain" id="rain" hidden>
+          <div class="rain-text" id="rainText"></div>
+          <div class="rain-bars" id="rainBars"></div>
+          <div class="rain-hours" id="rainHours"></div>
+        </div>
+        <div class="fc" id="strip"></div>
+      </div>
     </div>
 
-    <div class="rain" id="rain" hidden>
-      <div class="rain-text" id="rainText"></div>
-      <div class="rain-bars" id="rainBars"></div>
-      <div class="rain-hours" id="rainHours"></div>
+    <!-- With nothing playing the player waits as one bar in the last cover's colour. -->
+    <div class="bar" id="bar">
+      <div class="art" id="bArt"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+      <div class="bar-words">
+        <div class="bar-title" id="bTitle"></div>
+        <div class="bar-sub" id="bSub"></div>
+      </div>
+      <button class="pill" id="bLibrary" disabled><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>Browse</button>
+      <button class="pill" id="bDevices" disabled><svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><circle cx="12" cy="14" r="4"/><line x1="12" y1="6" x2="12.01" y2="6"/></svg>Speakers</button>
+      <button class="go" id="bPlay" aria-label="Play" disabled><svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></svg></button>
     </div>
-
-    <div class="strip" id="strip"></div>
   </section>
 
-  <section class="player idle" id="player">
-    <div class="p-bg" id="pArt"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
-
-    <div class="p-head">
-      <div class="p-meta">
-        <div class="p-title" id="pTitle"></div>
-        <div class="p-artist" id="pArtist"></div>
-        <div class="p-note" id="pNote"></div>
+  <section class="view np" id="player">
+    <div class="art" id="pArt"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+    <div class="np-side" id="side">
+      <div class="mini">
+        <div>
+          <div class="mini-time" id="miniTime"></div>
+          <div class="mini-date" id="miniDate"></div>
+        </div>
+        <div class="mini-right">
+          <div class="mini-wx"><span class="mini-icon" id="miniIcon"></span><span class="mini-temp" id="miniTemp"></span></div>
+          <div class="mini-rain" id="miniRain"></div>
+        </div>
       </div>
-      <div class="p-tools">
-        <button class="chip" id="pDevices" aria-label="Choose where to play" disabled><svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><circle cx="12" cy="14" r="4"/><line x1="12" y1="6" x2="12.01" y2="6"/></svg></button>
-        <button class="chip" id="pLibrary" aria-label="Choose what to play" disabled><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
-      </div>
-    </div>
 
-    <div class="p-foot">
-      <div class="p-next" id="pNextUp"></div>
-      <div class="p-sub off" id="pSub">
+      <div class="np-meta">
+        <div class="np-note" id="pNote"></div>
+        <div class="np-title" id="pTitle"></div>
+        <div class="np-artist" id="pArtist"></div>
+        <div class="np-next" id="pNextUp"></div>
+      </div>
+
+      <div class="seek" id="pSeek"><div class="track"><i id="pFill"></i></div><div class="knob" id="pKnob"></div></div>
+      <div class="times"><span id="pPos">0:00</span><span id="pDur">0:00</span></div>
+
+      <div class="transport">
+        <button class="big" id="pPrev" aria-label="Previous" disabled><svg viewBox="0 0 24 24"><path d="M19 5.5v13L9.5 12z"/><line x1="6" y1="5.5" x2="6" y2="18.5"/></svg></button>
+        <button class="main" id="pToggle" aria-label="Play or pause" disabled><svg viewBox="0 0 24 24" id="pToggleIcon"><path d="M7 4.5v15l13-7.5z"/></svg></button>
+        <button class="big" id="pNext" aria-label="Next" disabled><svg viewBox="0 0 24 24"><path d="M5 5.5v13l9.5-6.5z"/><line x1="18" y1="5.5" x2="18" y2="18.5"/></svg></button>
+      </div>
+
+      <div class="tools">
         <button class="chip" id="pShuffle" aria-label="Shuffle" disabled><svg viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></button>
         <button class="chip" id="pRepeat" aria-label="Repeat" disabled><svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><path class="one" d="M11 10.5l1.2-1v5"/></svg></button>
-        <span class="grow"></span>
         <button class="chip fill" id="pLike" aria-label="Like" disabled><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></button>
-      </div>
-      <div class="p-progress off" id="pProgress">
-        <span id="pPos">0:00</span>
-        <div class="seek" id="pSeek"><div class="bar"><i id="pFill"></i></div><div class="knob" id="pKnob"></div></div>
-        <span id="pDur">0:00</span>
-      </div>
-      <div class="p-ctl">
-        <button class="btn" id="pPrev" aria-label="Previous" disabled><svg viewBox="0 0 24 24"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg></button>
-        <button class="btn main" id="pToggle" aria-label="Play or pause" disabled><svg viewBox="0 0 24 24" id="pToggleIcon"><polygon points="6 3 20 12 6 21 6 3"/></svg></button>
-        <button class="btn" id="pNext" aria-label="Next" disabled><svg viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg></button>
-      </div>
-    </div>
-
-    <div class="sheet" id="sheet" hidden>
-      <div class="sheet-head"><span id="sheetTitle"></span><button class="chip" id="sheetClose" aria-label="Close"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
-      <div class="sheet-list" id="sheetList"></div>
-      <div class="sheet-foot off" id="sheetFoot">
-        <button class="chip" id="sheetBack" aria-label="Previous page"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
-        <span id="sheetPage"></span>
-        <button class="chip" id="sheetMore" aria-label="Next page"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
+        <button class="chip" id="pLibrary" aria-label="Choose what to play" disabled><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
+        <button class="chip" id="pDevices" aria-label="Choose where to play" disabled><svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><circle cx="12" cy="14" r="4"/><line x1="12" y1="6" x2="12.01" y2="6"/></svg></button>
       </div>
     </div>
   </section>
-</main>
+
+  <div class="sheet" id="sheet" hidden>
+    <div class="sheet-head"><span id="sheetTitle"></span><button class="chip" id="sheetClose" aria-label="Close"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="sheet-list" id="sheetList"></div>
+    <div class="sheet-foot off" id="sheetFoot">
+      <button class="pg" id="sheetBack" aria-label="Previous page"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+      <span id="sheetPage"></span>
+      <button class="pg" id="sheetMore" aria-label="Next page"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
+    </div>
+  </div>
+</div>
 <div class="night-clock" id="night">
   <div class="time" id="nightTime"></div>
   <div class="date" id="nightDate"></div>
 </div>
 <div class="stale" id="stale" hidden>offline</div>
 
+<script src="vendor/material-color.js"></script>
 <script>
 (function () {
   'use strict';
@@ -410,6 +405,8 @@
       $('date').innerHTML = '<b>' + dp.weekday + '</b>, ' + dp.day + ' ' + dp.month;
       $('nightTime').innerHTML = $('time').innerHTML;
       $('nightDate').innerHTML = $('date').innerHTML;
+      $('miniTime').textContent = parts.hour + ':' + parts.minute + (hour12 && parts.dayPeriod ? ' ' + parts.dayPeriod : '');
+      $('miniDate').textContent = dp.weekday.slice(0, 3) + ' ' + dp.day + ' ' + dp.month.slice(0, 3);
     }
     applyNight(d);
     $('stale').hidden = !lastOk || Date.now() - lastOk < 5 * 60 * 1000;
@@ -443,26 +440,33 @@
       'Feels ' + deg(w.feels) + ' · ' + Math.round(w.wind) + ' m/s<br>' +
       (today ? '↑' + deg(today.max) + ' ↓' + deg(today.min) + ' · ' : '') + w.place;
 
+    // The next two forecast hours, then the next two days, one row each.
+    function row(when, code, isDay, temps) {
+      return '<div class="fc-row"><span class="when">' + when + '</span>' +
+        '<span class="ico">' + icon(code, isDay) + '</span><span class="what">' + (TEXT[code] || '') +
+        '</span><span>' + temps + '</span></div>';
+    }
     var html = '';
     (w.hours || []).slice(0, 2).forEach(function (h) {
-      html += '<div class="cell"><span class="when">' + h.time.slice(11, 16) + '</span>' +
-        '<span class="ico">' + icon(h.code, h.is_day) + '</span><span>' + deg(h.temp) + '</span></div>';
+      html += row(h.time.slice(11, 16), h.code, h.is_day, deg(h.temp));
     });
-    html += '<div class="sep"></div>';
     (w.days || []).slice(1, 3).forEach(function (d) {
       var name = new Intl.DateTimeFormat('en-GB', { weekday: 'short', timeZone: 'UTC' })
         .format(new Date(d.date + 'T12:00:00Z'));
-      html += '<div class="cell"><span class="when">' + name + '</span>' +
-        '<span class="ico">' + icon(d.code, 1) + '</span><span>' + deg(d.max) +
-        '<span class="lo">' + deg(d.min) + '</span></span></div>';
+      html += row(name, d.code, 1, deg(d.max) + '<span class="lo">' + deg(d.min) + '</span>');
     });
     $('strip').innerHTML = html;
-    renderRain(w.rain || []);
+
+    // While music plays: the same in one corner.
+    $('miniIcon').innerHTML = icon(w.code, w.is_day);
+    $('miniTemp').textContent = deg(w.temp);
+    $('miniRain').textContent = renderRain(w.rain || []) || TEXT[w.code] || '';
   }
 
+  // Draws the rain hours; returns a short line for the corner, or '' when dry.
   function renderRain(hours) {
     $('rain').hidden = !hours.length;
-    if (!hours.length) return;
+    if (!hours.length) return '';
     var SNOW = [71, 73, 75, 77, 85, 86];
     var likely = null, possible = null, bars = '', labels = '';
     hours.forEach(function (h, i) {
@@ -481,6 +485,10 @@
       : 'No rain in the next 12 hours';
     $('rainBars').innerHTML = bars;
     $('rainHours').innerHTML = labels;
+    return likely && likely === first ? what(likely) + ' now'
+      : likely ? what(likely) + ' around ' + likely.time.slice(11, 16)
+      : possible && possible.chance >= 25 ? what(possible) + ' possible ' + possible.time.slice(11, 16)
+      : '';
   }
 
   function refresh() {
@@ -503,27 +511,88 @@
   }
 
   // --------------------------------------------------------------- player
-  var player = null, holdUntil = 0, shownArt, alertUntil = 0;
-  var PLAY = '<polygon points="6 3 20 12 6 21 6 3"/>';
-  var PAUSE = '<rect x="6" y="4" width="4" height="16" rx="0.5"/><rect x="14" y="4" width="4" height="16" rx="0.5"/>';
+  var player = null, holdUntil = 0, shownArt, alertUntil = 0, pausedAt = 0;
+  var PLAY = '<path d="M7 4.5v15l13-7.5z"/>';
+  var PAUSE = '<rect x="6" y="4.5" width="4.2" height="15" rx="1"/><rect x="13.8" y="4.5" width="4.2" height="15" rx="1"/>';
+  // Paused for longer than this, the screen goes back to the clock.
+  var PAUSE_KEEP = 3 * 60 * 1000;
 
   function clock(ms) {
     var s = Math.max(0, Math.floor(ms / 1000));
     return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
   }
 
+  // ---------------------------------------------------- colour of the cover
+  // Material's colour library picks the cover's most suitable colour (the way
+  // Android themes itself from a wallpaper); the page uses a deep tone of it
+  // as the background and a light tone for the main buttons. A grey cover, or
+  // one that can't be read, leaves the neutral grey.
+  var NEUTRAL = { tint: '#24272d', hi: '#eceef2' }, tints = {}, tintFor;
+
+  function applyTint(t) {
+    var root = document.documentElement.style;
+    root.setProperty('--tint', t.tint);
+    root.setProperty('--tint-hi', t.hi);
+  }
+
+  function coverTint(img) {
+    var MC = window.MaterialColor, size = 64;
+    var canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    var g = canvas.getContext('2d');
+    g.drawImage(img, 0, 0, size, size);
+    var data = g.getImageData(0, 0, size, size).data, pixels = [];
+    for (var i = 0; i < data.length; i += 4) {
+      if (data[i + 3] > 250) pixels.push(MC.argbFromRgb(data[i], data[i + 1], data[i + 2]));
+    }
+    var best = MC.Score.score(MC.QuantizerCelebi.quantize(pixels, 128), { fallbackColorARGB: 0 })[0];
+    if (!best) return NEUTRAL;
+    var hct = MC.Hct.fromInt(best);
+    var tones = MC.TonalPalette.fromHueAndChroma(hct.hue, Math.min(hct.chroma, 36));
+    return { tint: MC.hexFromArgb(tones.tone(20)), hi: MC.hexFromArgb(tones.tone(94)) };
+  }
+
+  function pickTint(url) {
+    tintFor = url;
+    if (!url || !window.MaterialColor) { applyTint(NEUTRAL); return; }
+    if (tints[url]) { applyTint(tints[url]); return; }
+    var img = new Image();
+    img.crossOrigin = 'anonymous';   // Spotify's image server allows reading the pixels
+    img.onload = function () {
+      var t = NEUTRAL;
+      try { t = coverTint(img); } catch (e) { beat('tint: ' + (e && e.message)); }
+      tints[url] = t;
+      if (tintFor === url) applyTint(t);
+    };
+    img.onerror = function () { tints[url] = NEUTRAL; if (tintFor === url) applyTint(NEUTRAL); };
+    img.src = url;
+  }
+
   function setArt(url) {
     if (url === shownArt) return;
     shownArt = url;
-    $('pArt').style.backgroundImage = url ? 'url("' + url + '")' : '';
-    $('pArt').classList.toggle('has-art', !!url);
+    ['pArt', 'bArt'].forEach(function (id) {
+      $(id).style.backgroundImage = url ? 'url("' + url + '")' : '';
+      $(id).classList.toggle('has-art', !!url);
+    });
+    pickTint(url);
   }
 
+  // One status line, shown under the title while playing and in the bar
+  // otherwise (after the artist).
+  var noted = { text: '', alert: false }, barArtist = '';
   function note(text, alert) {
     if (!alert && Date.now() < alertUntil) return;   // keep an error visible for a while
-    $('pNote').textContent = text || '';
-    $('pNote').classList.toggle('alert', !!alert);
+    noted = { text: text || '', alert: !!alert };
     if (alert) alertUntil = Date.now() + 6000;
+    drawNote();
+  }
+  function drawNote() {
+    $('pNote').textContent = noted.text;
+    $('pNote').classList.toggle('alert', noted.alert);
+    $('bSub').textContent = noted.alert ? noted.text
+      : [barArtist, noted.text].filter(Boolean).join(' · ');
+    $('bSub').classList.toggle('alert', noted.alert);
   }
 
   function renderPlayer(p) {
@@ -533,22 +602,28 @@
     var active = ready && p.active;
     var show = active ? p : (ready && p.last) || null;
 
-    $('player').classList.toggle('idle', !active);
+    // Playing, or only just paused: the music takes the screen.
+    if (active && !p.playing) { if (!pausedAt) pausedAt = Date.now(); }
+    else pausedAt = 0;
+    document.body.classList.toggle('np-on', !!(active && (p.playing || Date.now() - pausedAt < PAUSE_KEEP)));
+
     if (!ready) {
       setArt(null);
-      $('pTitle').textContent = "Spotify isn't connected";
-      $('pArtist').textContent = p && p.configured
-        ? 'Sign in once to turn the player on.'
-        : 'Add the Spotify app ID to finish setup.';
+      $('bTitle').textContent = "Spotify isn't connected";
+      barArtist = p && p.configured
+        ? 'Sign in once to turn the player on'
+        : 'Add the Spotify app ID to finish setup';
       note(p && p.error ? p.error : '', !!(p && p.error));
     } else {
       setArt(show ? show.art : null);
-      $('pTitle').textContent = show ? show.title : 'Nothing played yet';
+      $('pTitle').textContent = show ? show.title : '';
       $('pArtist').textContent = show ? show.artist : '';
+      $('bTitle').textContent = show ? show.title : 'Nothing played yet';
+      barArtist = show ? show.artist : '';
       var local = p.local || { state: 'off' };
       note(p.error ? p.error
            : active ? (p.device ? 'Playing on ' + p.device : '')
-           : p.local_ready ? 'Tap play to pick up where you left off'
+           : p.local_ready ? 'tap play to pick up where you left off'
            : local.state === 'error' ? (local.message || 'The player could not start')
            : local.state === 'off' ? 'This server has no player of its own'
            : local.state === 'ready' ? 'Connecting the sound…'
@@ -559,16 +634,16 @@
       // sound back until the screen is touched.
       if (active && p.playing && p.on_dashboard && soundBlocked()) note('Tap the screen to hear it here', true);
     }
+    drawNote();
 
     $('pToggleIcon').innerHTML = active && p.playing ? PAUSE : PLAY;
     // With nothing playing, play only works once this page can play by itself.
-    $('pToggle').disabled = !ready || (!active && !p.local_ready);
+    $('pToggle').disabled = $('bPlay').disabled = !ready || (!active && !p.local_ready);
     $('pPrev').disabled = !active;
     $('pNext').disabled = !active;
-    $('pLibrary').disabled = !ready;
-    $('pDevices').disabled = !ready;
+    $('pLibrary').disabled = $('bLibrary').disabled = !ready;
+    $('pDevices').disabled = $('bDevices').disabled = !ready;
 
-    $('pSub').classList.toggle('off', !active);
     $('pShuffle').disabled = $('pRepeat').disabled = !active;
     $('pShuffle').classList.toggle('on', !!(active && p.shuffle));
     $('pRepeat').classList.toggle('on', !!(active && p.repeat && p.repeat !== 'off'));
@@ -578,7 +653,6 @@
     $('pNextUp').textContent = active && p.next
       ? 'Next: ' + p.next.title + (p.next.artist ? ' · ' + p.next.artist : '') : '';
 
-    $('pProgress').classList.toggle('off', !active || !p.duration_ms);
     drawProgress();
   }
 
@@ -645,7 +719,7 @@
   var busy = false, busyTimer;
   function setBusy(on) {
     busy = on;
-    $('player').classList.toggle('busy', on);
+    document.body.classList.toggle('busy', on);
     clearTimeout(busyTimer);
     if (on) busyTimer = setTimeout(function () { setBusy(false); }, 6000);
   }
@@ -727,7 +801,7 @@
   // ------------------------------------------------- what to play, and where
   var NOTE_ICON = '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
   var DEVICE_ICON = '<svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><circle cx="12" cy="14" r="4"/><line x1="12" y1="6" x2="12.01" y2="6"/></svg>';
-  var PER_PAGE = 5;
+  var PER_PAGE = 8;   // two columns of four
   var sheet = { kind: null, rows: [], page: 0, empty: '' }, sheetTimer;
 
   function esc(text) {
@@ -804,6 +878,9 @@
 
   $('pLibrary').addEventListener('click', function () { openSheet('library'); });
   $('pDevices').addEventListener('click', function () { openSheet('devices'); });
+  $('bLibrary').addEventListener('click', function () { openSheet('library'); });
+  $('bDevices').addEventListener('click', function () { openSheet('devices'); });
+  $('bPlay').addEventListener('click', function () { command('toggle'); });
   $('sheetClose').addEventListener('click', closeSheet);
   $('sheetBack').addEventListener('click', function () { sheet.page--; drawSheet(); });
   $('sheetMore').addEventListener('click', function () { sheet.page++; drawSheet(); });
@@ -952,7 +1029,7 @@
 
   // ------------------------------------------------------------ heartbeat
   function beat(event) {
-    var info = $('info'), card = $('player');
+    var home = $('home'), side = $('side');
     var body = {
       up: Math.round((Date.now() - loadedAt) / 1000),
       cast: castState,
@@ -962,13 +1039,15 @@
       visible: document.visibilityState,
       w: innerWidth, h: innerHeight, dpr: devicePixelRatio,
       // layout check, measured on the device itself
+      // (in stage pixels: the 1024 x 600 layout before scaling)
       fit: {
-        infoOverflow: info.scrollHeight - info.clientHeight,
-        cardOverflow: card.scrollHeight - card.clientHeight,
-        timeRight: Math.round($('time').getBoundingClientRect().right),
-        cardLeft: Math.round(card.getBoundingClientRect().left),
-        cardBottom: Math.round(card.getBoundingClientRect().bottom),
-        stripBottom: Math.round($('strip').getBoundingClientRect().bottom)
+        scale: stageScale,
+        view: document.body.classList.contains('np-on') ? 'playing' : 'home',
+        homeOverflow: home.scrollHeight - home.clientHeight,
+        sideOverflow: side.scrollHeight - side.clientHeight,
+        timeRight: Math.round($('time').offsetLeft + $('time').scrollWidth),
+        timeLimit: $('time').parentNode.parentNode.offsetLeft + $('time').parentNode.parentNode.offsetWidth,
+        tint: getComputedStyle(document.documentElement).getPropertyValue('--tint').trim()
       },
       player: !player ? 'none' : !player.connected ? 'not-connected' : player.active
         ? (player.playing ? 'playing' : 'paused') + ':' + player.device : 'idle',
@@ -1038,7 +1117,7 @@
   function foreignLayers() {
     // Elements the Cast system added next to the dashboard itself.
     return [].filter.call(document.body.children, function (el) {
-      return !/^(SCRIPT|STYLE)$/.test(el.tagName) && !el.classList.contains('dash') && el.id !== 'stale';
+      return !/^(SCRIPT|STYLE)$/.test(el.tagName) && el.id !== 'stage' && el.id !== 'night' && el.id !== 'stale';
     }).map(function (el) {
       var box = el.getBoundingClientRect();
       return el.tagName.toLowerCase() + ' ' + Math.round(box.width) + 'x' + Math.round(box.height) +
@@ -1053,6 +1132,15 @@
   }).observe(document.documentElement, { childList: true, subtree: true });
   document.addEventListener('visibilitychange', function () { beat('visibility:' + document.visibilityState); });
   window.addEventListener('error', function (e) { beat('js-error: ' + e.message); });
+
+  // The layout is drawn for 1024 x 600 (the Hub); scale it to fit any window.
+  var stageScale = 1;
+  function fitStage() {
+    stageScale = Math.min(innerWidth / 1024, innerHeight / 600);
+    $('stage').style.transform = 'scale(' + stageScale + ')';
+  }
+  window.addEventListener('resize', fitStage);
+  fitStage();
 
   tick();
   refresh();
