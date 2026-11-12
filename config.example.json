@@ -1,0 +1,19 @@
+{
+  "hub_host": "192.168.1.50",
+  "port": 8765,
+  "public_url": "http://192.168.1.10:8765/",
+  "timezone": "Europe/London",
+  "hour12": false,
+  "cast_app_id": "",
+  "voice_takeover": true,
+  "spotify": {
+    "client_id": "",
+    "device": "",
+    "player_name": "Dashboard"
+  },
+  "weather": {
+    "name": "London",
+    "latitude": 51.5074,
+    "longitude": -0.1278
+  }
+}

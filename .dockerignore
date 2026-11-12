@@ -1,0 +1,28 @@
+# VCS / tooling
+.git
+.gitignore
+.github
+.claude
+.idea
+.vscode
+.codegraph
+.venv
+__pycache__
+*.pyc
+node_modules
+
+# Secrets / local settings (compose provides env at runtime)
+.env
+.env.*
+config.json
+config.example.json
+
+# Local data
+data
+
+# Not needed in the image
+tests
+tools
+package.json
+docker-compose.yml
+*.md

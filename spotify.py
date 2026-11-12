@@ -1,0 +1,420 @@
+"""Spotify for the dashboard: one-time sign-in, what's playing, and controls.
+
+Uses only the official Web API. Sign-in is the authorization-code flow with
+PKCE, so only the app's client ID is needed (no client secret). The refresh
+token is kept in the data directory.
+"""
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import logging
+import secrets
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+log = logging.getLogger("hubdash.spotify")
+
+AUTH_URL = "https://accounts.spotify.com/authorize"
+TOKEN_URL = "https://accounts.spotify.com/api/token"
+API = "https://api.spotify.com/v1"
+SCOPES = (
+    "streaming user-read-email user-read-private "
+    "user-read-playback-state user-modify-playback-state "
+    "user-read-currently-playing user-read-recently-played"
+)
+
+
+def _http(method: str, url: str, headers: dict | None = None, data: bytes | None = None):
+    req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            status, raw, hdrs = resp.status, resp.read(), resp.headers
+    except urllib.error.HTTPError as err:
+        status, raw, hdrs = err.code, err.read(), err.headers
+    try:
+        body = json.loads(raw) if raw else None
+    except ValueError:
+        body = None
+    return status, body, hdrs
+
+
+class Spotify:
+    def __init__(self, client_id: str, redirect_uri: str, store: Path, device: str = "") -> None:
+        self.client_id = client_id
+        self.redirect_uri = redirect_uri
+        self.preferred_device = device
+        self._store = store
+        self._lock = threading.RLock()
+        self._refresh: str | None = None
+        self._access: str | None = None
+        self._expires = 0.0
+        self._pending: dict[str, str] = {}      # login state -> PKCE verifier
+        self._backoff_until = 0.0
+        self._state: dict | None = None
+        self._state_at = 0.0
+        self._last: dict | None = None
+        self._last_at = 0.0
+        # The dashboard page itself, when it runs Spotify's in-browser player.
+        self._local_id: str | None = None
+        self._local_at = 0.0
+        self._takeover_until = 0.0
+        self._handoff: dict | None = None
+        self.error = ""
+        try:
+            self._refresh = json.loads(store.read_text(encoding="utf-8")).get("refresh_token")
+        except (OSError, ValueError):
+            pass
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.client_id)
+
+    @property
+    def connected(self) -> bool:
+        return bool(self.client_id and self._refresh)
+
+    # --------------------------------------------------------------- sign-in
+
+    def login_url(self) -> str:
+        verifier = secrets.token_urlsafe(64)
+        challenge = base64.urlsafe_b64encode(
+            hashlib.sha256(verifier.encode()).digest()
+        ).rstrip(b"=").decode()
+        state = secrets.token_urlsafe(16)
+        with self._lock:
+            self._pending = {state: verifier}
+        return AUTH_URL + "?" + urllib.parse.urlencode(
+            {
+                "client_id": self.client_id,
+                "response_type": "code",
+                "redirect_uri": self.redirect_uri,
+                "scope": SCOPES,
+                "state": state,
+                "code_challenge_method": "S256",
+                "code_challenge": challenge,
+            }
+        )
+
+    def finish_login(self, code: str, state: str) -> str | None:
+        """Exchange the code for tokens. Returns an error message, or None."""
+        with self._lock:
+            verifier = self._pending.pop(state, None)
+        if not verifier:
+            return "This sign-in link has expired. Start again from /api/spotify/login."
+        status, body, _ = _http(
+            "POST",
+            TOKEN_URL,
+            {"Content-Type": "application/x-www-form-urlencoded"},
+            urllib.parse.urlencode(
+                {
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": self.redirect_uri,
+                    "client_id": self.client_id,
+                    "code_verifier": verifier,
+                }
+            ).encode(),
+        )
+        if status != 200 or not body or "refresh_token" not in body:
+            return f"Spotify refused the sign-in ({status}): {(body or {}).get('error_description', body)}"
+        with self._lock:
+            self._refresh = body["refresh_token"]
+            self._access = body["access_token"]
+            self._expires = time.time() + body.get("expires_in", 3600)
+            self.error = ""
+            self._state = None
+            self._save()
+        log.info("spotify: signed in")
+        return None
+
+    def _save(self) -> None:
+        self._store.parent.mkdir(parents=True, exist_ok=True)
+        self._store.write_text(json.dumps({"refresh_token": self._refresh}), encoding="utf-8")
+
+    def _token(self) -> str | None:
+        with self._lock:
+            if self._access and time.time() < self._expires - 60:
+                return self._access
+            if not self._refresh:
+                return None
+            status, body, _ = _http(
+                "POST",
+                TOKEN_URL,
+                {"Content-Type": "application/x-www-form-urlencoded"},
+                urllib.parse.urlencode(
+                    {
+                        "grant_type": "refresh_token",
+                        "refresh_token": self._refresh,
+                        "client_id": self.client_id,
+                    }
+                ).encode(),
+            )
+            if status != 200 or not body:
+                log.warning("spotify: token refresh failed (%s): %s", status, body)
+                if status in (400, 401):
+                    self.error = "Spotify sign-in expired. Sign in again."
+                return None
+            self._access = body["access_token"]
+            self._expires = time.time() + body.get("expires_in", 3600)
+            if body.get("refresh_token") and body["refresh_token"] != self._refresh:
+                self._refresh = body["refresh_token"]
+                self._save()
+            self.error = ""
+            return self._access
+
+    def access_token(self) -> str | None:
+        """A current access token (the in-page player needs one)."""
+        return self._token()
+
+    # ------------------------------------------------------------------- api
+
+    def _api(self, method: str, path: str, query: dict | None = None, body: dict | None = None):
+        token = self._token()
+        if not token:
+            return 0, None
+        if time.time() < self._backoff_until:
+            return 429, None
+        url = API + path + ("?" + urllib.parse.urlencode(query) if query else "")
+        headers = {"Authorization": "Bearer " + token}
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode()
+            headers["Content-Type"] = "application/json"
+        elif method in ("PUT", "POST"):
+            data = b""
+        status, payload, hdrs = _http(method, url, headers, data)
+        if status == 429:
+            wait = int(hdrs.get("Retry-After", "5") or 5)
+            self._backoff_until = time.time() + wait
+            log.warning("spotify: rate limited, backing off %ss", wait)
+        return status, payload
+
+    @staticmethod
+    def _describe(item: dict | None) -> dict:
+        item = item or {}
+        images = (item.get("album") or item.get("show") or item).get("images") or []
+        # Images come largest first; the middle one (~300px) is plenty.
+        art = images[1]["url"] if len(images) > 1 else (images[0]["url"] if images else None)
+        artists = ", ".join(a["name"] for a in item.get("artists") or [])
+        return {
+            "title": item.get("name") or "",
+            "artist": artists or (item.get("show") or {}).get("name", ""),
+            "album": (item.get("album") or {}).get("name", ""),
+            "art": art,
+            "duration_ms": item.get("duration_ms") or 0,
+            "uri": item.get("uri"),
+        }
+
+    def _fetch_state(self) -> dict:
+        status, p = self._api("GET", "/me/player", {"additional_types": "track,episode"})
+        if status == 200 and p and p.get("item"):
+            device = p.get("device") or {}
+            return {
+                "active": True,
+                "playing": bool(p.get("is_playing")),
+                **self._describe(p["item"]),
+                "device": device.get("name") or "",
+                "device_id": device.get("id"),
+                "volume": device.get("volume_percent"),
+                "can_volume": bool(device.get("supports_volume")),
+                "progress_ms": p.get("progress_ms") or 0,
+                "at": int(time.time() * 1000),
+            }
+        if status in (200, 202, 204):
+            return {"active": False, "playing": False, "last": self._last_played()}
+        # Network trouble or rate limit: keep showing what we had.
+        if self._state is not None:
+            return self._state
+        return {"active": False, "playing": False, "last": None}
+
+    def _last_played(self) -> dict | None:
+        if time.time() - self._last_at < 600:
+            return self._last
+        status, p = self._api("GET", "/me/player/recently-played", {"limit": 1})
+        if status == 200 and p and p.get("items"):
+            entry = p["items"][0]
+            self._last = {
+                **self._describe(entry.get("track")),
+                "context_uri": (entry.get("context") or {}).get("uri"),
+            }
+        self._last_at = time.time()
+        return self._last
+
+    def state(self) -> dict:
+        base = {
+            "configured": self.configured,
+            "connected": self.connected,
+            "error": self.error,
+            "local_ready": self.local_ready,
+        }
+        if not self.connected:
+            return base
+        with self._lock:
+            ttl = 2 if (self._state or {}).get("playing") else 5
+            if self._state is None or time.time() - self._state_at > ttl:
+                self._state = self._fetch_state()
+                self._state_at = time.time()
+            device_id = self._state.get("device_id")
+            return {
+                **base,
+                **self._state,
+                "on_dashboard": bool(device_id) and device_id == self._local_id,
+            }
+
+    # ------------------------------------------------------- in-page player
+
+    @property
+    def local_ready(self) -> bool:
+        """True while the dashboard page reports a working in-browser player."""
+        return bool(self._local_id) and time.time() - self._local_at < 60
+
+    def set_local_device(self, device_id: str | None) -> None:
+        """Called from the page's heartbeat with its Spotify device id (or None)."""
+        with self._lock:
+            self._local_id = device_id or None
+            self._local_at = time.time()
+            pending = bool(device_id) and time.time() < self._takeover_until
+            if pending:
+                self._takeover_until = 0.0
+        if pending:
+            threading.Thread(target=self._transfer_to_local, daemon=True).start()
+
+    @property
+    def local_recent(self) -> bool:
+        """The page had a working in-browser player within the last few minutes
+        (it stops reporting while another app holds the Hub's screen)."""
+        return bool(self._local_id) and time.time() - self._local_at < 300
+
+    def expect_takeover(self) -> None:
+        """Music was started elsewhere on the Hub (e.g. by voice). Remember
+        what is playing, so it can continue in the page's player as soon as
+        the page reports in again."""
+        self._handoff = None
+        status, p = self._api("GET", "/me/player", {"additional_types": "track,episode"})
+        if status == 200 and p and p.get("item"):
+            self._handoff = {
+                "uri": p["item"].get("uri"),
+                "context_uri": (p.get("context") or {}).get("uri"),
+                "position_ms": p.get("progress_ms") or 0,
+            }
+        self._takeover_until = time.time() + 90
+
+    def _transfer_to_local(self) -> None:
+        handoff, self._handoff = self._handoff, None
+        for attempt in range(5):
+            device_id = self._local_id
+            if not device_id:
+                return
+            if handoff and handoff.get("uri") and attempt < 2:
+                # Continue the exact track and position that was playing.
+                body = {"position_ms": handoff["position_ms"]}
+                if handoff.get("context_uri"):
+                    body.update(context_uri=handoff["context_uri"], offset={"uri": handoff["uri"]})
+                else:
+                    body["uris"] = [handoff["uri"]]
+                status, _ = self._api("PUT", "/me/player/play", {"device_id": device_id}, body)
+            else:
+                status, _ = self._api(
+                    "PUT", "/me/player", body={"device_ids": [device_id], "play": True}
+                )
+            if status in (200, 202, 204):
+                log.info("spotify: playback moved to the dashboard")
+                self._state_at = 0
+                return
+            log.info("spotify: move to dashboard not accepted yet (%s), retrying", status)
+            time.sleep(2)
+        self.error = "Could not move the music to the dashboard."
+
+    # -------------------------------------------------------------- controls
+
+    def _pick_device(self) -> dict | None:
+        status, p = self._api("GET", "/me/player/devices")
+        devices = [d for d in (p or {}).get("devices") or [] if not d.get("is_restricted")]
+        if status != 200 or not devices:
+            return None
+        if self.local_ready:
+            for d in devices:
+                if d.get("id") == self._local_id:
+                    return d
+        # Without the page's own player, only start music on a device that was
+        # chosen on purpose. Never fall back to the Hub's own Spotify app or a
+        # random device: that would switch the Hub's screen or play elsewhere.
+        wanted = self.preferred_device.strip().lower()
+        for d in devices:
+            if wanted and d.get("name", "").strip().lower() == wanted:
+                return d
+        return None
+
+    def _resume(self) -> tuple[bool, str]:
+        """Start playback when nothing is active: continue where Spotify left
+        off, or failing that, replay the most recent track's playlist/album."""
+        device = self._pick_device()
+        if device is None:
+            return False, "The dashboard can't play music by itself yet."
+        status, _ = self._api("PUT", "/me/player", body={"device_ids": [device["id"]], "play": True})
+        if status in (200, 202, 204):
+            time.sleep(1.5)
+            _, p = self._api("GET", "/me/player")
+            if p and p.get("is_playing"):
+                return True, ""
+        last = self._last_played()
+        if not last or not last.get("uri"):
+            return False, "Nothing to resume yet. Play something on Spotify once."
+        body = (
+            {"context_uri": last["context_uri"], "offset": {"uri": last["uri"]}}
+            if last.get("context_uri")
+            else {"uris": [last["uri"]]}
+        )
+        status, payload = self._api("PUT", "/me/player/play", {"device_id": device["id"]}, body)
+        if status not in (200, 202, 204) and "context_uri" in body:
+            status, payload = self._api(
+                "PUT", "/me/player/play", {"device_id": device["id"]}, {"uris": [last["uri"]]}
+            )
+        if status in (200, 202, 204):
+            return True, ""
+        return False, self._reason(status, payload)
+
+    @staticmethod
+    def _reason(status: int, payload) -> str:
+        message = ((payload or {}).get("error") or {}).get("message") if isinstance(payload, dict) else ""
+        if status == 403:
+            return message or "Spotify refused (Premium is required for playback control)."
+        if status == 429:
+            return "Spotify is rate limiting; try again in a moment."
+        return message or f"Spotify error {status}"
+
+    def command(self, action: str, value=None) -> tuple[bool, str]:
+        if not self.connected:
+            return False, "Spotify is not connected."
+        with self._lock:
+            current = self._fetch_state()
+            if action == "toggle":
+                if current.get("active") and current.get("playing"):
+                    status, payload = self._api("PUT", "/me/player/pause")
+                elif current.get("active"):
+                    status, payload = self._api("PUT", "/me/player/play")
+                    if status == 404:
+                        status, payload = None, None
+                else:
+                    status, payload = None, None
+                result = self._resume() if status is None else (
+                    (True, "") if status in (200, 202, 204) else (False, self._reason(status, payload))
+                )
+            elif action in ("next", "prev"):
+                path = "/me/player/next" if action == "next" else "/me/player/previous"
+                status, payload = self._api("POST", path)
+                result = (True, "") if status in (200, 202, 204) else (False, self._reason(status, payload))
+            elif action == "volume":
+                level = max(0, min(100, int(value)))
+                status, payload = self._api("PUT", "/me/player/volume", {"volume_percent": level})
+                result = (True, "") if status in (200, 202, 204) else (False, self._reason(status, payload))
+            else:
+                result = (False, "Unknown action.")
+            self._state_at = 0  # refetch on the next poll
+            return result

@@ -1,0 +1,60 @@
+services:
+  hubdash:
+    # On the server: `docker compose pull && docker compose up -d` fetches the
+    # published image. Locally, `docker compose up --build` builds from this
+    # folder instead.
+    image: ${HUBDASH_IMAGE:-ghcr.io/drumslave-git/hub-spotify-dashboard:latest}
+    build: .
+    container_name: hubdash
+    restart: unless-stopped
+
+    # Host networking (Linux): lets the service work out the address the Hub
+    # should load the page from when PUBLIC_URL is empty. The page is served
+    # on PORT.
+    network_mode: host
+
+    # Holds the Spotify sign-in (spotify.json). Must be writable by uid 1000.
+    volumes:
+      - "${DATA_PATH:-./data}:/app/data"
+
+    environment:
+      TZ: ${TZ:-UTC}
+      PORT: ${PORT:-8765}
+
+      # The Nest Hub's IP. Give it a fixed DHCP lease on the router.
+      HUB_HOST: ${HUB_HOST:-}
+
+      # Address the Hub loads the dashboard from. Use the HTTPS name for
+      # Spotify playback inside the dashboard, e.g. https://hub.example.com/
+      # Empty = auto-detect this server's LAN address (plain http).
+      PUBLIC_URL: ${PUBLIC_URL:-}
+
+      WEATHER_NAME: ${WEATHER_NAME:-London}
+      WEATHER_LAT: ${WEATHER_LAT:-51.5074}
+      WEATHER_LON: ${WEATHER_LON:--0.1278}
+      HOUR12: ${HOUR12:-false}
+
+      # Spotify app (developer.spotify.com). Only the client ID is needed.
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      # Where Spotify sends the browser after sign-in. Must match the app's
+      # settings exactly; Spotify allows https, or http on 127.0.0.1 only.
+      SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI:-}
+      # Name the dashboard's own player shows up as in Spotify.
+      SPOTIFY_PLAYER_NAME: ${SPOTIFY_PLAYER_NAME:-Dashboard}
+      # Optional: another Spotify device to start music on when the dashboard
+      # cannot play by itself. Leave empty; naming the Hub here would make
+      # Spotify's own app take over the Hub's screen.
+      SPOTIFY_DEVICE: ${SPOTIFY_DEVICE:-}
+
+      # Your own registered Cast app ID (empty = the public DashCast app).
+      CAST_APP_ID: ${CAST_APP_ID:-}
+      # Move Spotify sessions started on the Hub (e.g. by voice) into the dashboard.
+      VOICE_TAKEOVER: ${VOICE_TAKEOVER:-true}
+
+    healthcheck:
+      # 127.0.0.1 (not localhost): the server binds IPv4 only.
+      test: ["CMD", "python", "-c", "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/api/health' % os.environ.get('PORT','8765'), timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

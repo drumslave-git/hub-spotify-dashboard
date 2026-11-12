@@ -1,0 +1,19 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Local settings and secrets (compose reads .env; config.json is for local runs)
+.env
+.env.*
+!.env.example
+config.json
+
+# Spotify sign-in lives here
+data/
+
+# Tooling
+.idea/
+.vscode/
+.codegraph/
+node_modules/

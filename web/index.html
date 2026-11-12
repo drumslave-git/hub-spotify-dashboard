@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kitchen display</title>
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: #14171c;
+    --raised: #1e2229;
+    --line: #262b33;
+    --text: #f3f0ea;
+    --muted: #8b9199;
+    --warm: #f0b25a;
+    --cool: #7db4e8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Google Sans", Roboto, "Segoe UI", system-ui, sans-serif;
+    overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .dash {
+    height: 100vh;
+    padding: 4vh 3vw;
+    display: grid;
+    grid-template-columns: 46fr 54fr;
+    column-gap: 3vw;
+  }
+
+  /* ------------------------------------------------ left: time, date, weather */
+  .info {
+    display: flex; flex-direction: column; justify-content: space-between;
+    min-width: 0; min-height: 0;
+    padding: 0.5vh 0 0 1vw;
+  }
+  .time {
+    font-size: 27vh;
+    line-height: 0.95;
+    font-weight: 300;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .time .colon { color: var(--muted); padding: 0 0.02em; position: relative; top: -0.06em; }
+  .time .ampm { font-size: 0.2em; color: var(--muted); margin-left: 0.3em; letter-spacing: 0; }
+  .date { margin-top: 1.2vh; font-size: 4.6vh; color: var(--muted); padding-left: 0.4vw; white-space: nowrap; }
+  .date b { color: var(--text); font-weight: 400; }
+
+  .now { padding-left: 0.4vw; }
+  .now-top { display: flex; align-items: center; gap: 1.8vw; }
+  .now-icon { width: 12vh; height: 12vh; flex: none; }
+  .now-temp { font-size: 15vh; font-weight: 300; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+  .now-text { min-width: 0; padding-left: 0.6vw; }
+  .now-desc { font-size: 4.2vh; white-space: nowrap; }
+  .now-meta { margin-top: 0.8vh; font-size: 3vh; color: var(--muted); line-height: 1.45; white-space: nowrap; }
+
+  .strip {
+    display: flex; align-items: stretch;
+    background: var(--panel);
+    border-radius: 2.6vh;
+    padding: 1.6vh 0.4vw 1.5vh;
+  }
+  .cell {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; align-items: center; gap: 0.5vh;
+    font-size: 3.3vh;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .cell .when { color: var(--muted); font-size: 2.7vh; }
+  .cell .ico { width: 4.6vh; height: 4.6vh; flex: none; }
+  .cell .lo { color: var(--muted); margin-left: 0.4em; }
+  .sep { width: 1px; background: var(--line); margin: 0 0.3vw; }
+
+  svg.wx { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+  svg.wx .sun { stroke: var(--warm); }
+  svg.wx .drop { stroke: var(--cool); }
+  svg.wx .cover { fill: var(--bg); }
+  .strip svg.wx .cover { fill: var(--panel); }
+
+  /* ------------------------------------------------------ right: media player */
+  .player {
+    background: var(--panel);
+    border-radius: 3.2vh;
+    padding: 3.2vh 2.4vw 2.4vh;
+    display: flex; flex-direction: column; justify-content: space-between;
+    min-width: 0; min-height: 0;
+  }
+  .p-top { display: flex; align-items: center; gap: 2vw; min-width: 0; }
+  .art {
+    width: 31vh; height: 31vh; flex: none;
+    border-radius: 2vh;
+    background: var(--raised) center / cover no-repeat;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted);
+  }
+  .art svg { width: 11vh; height: 11vh; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
+  .art.has-art svg { display: none; }
+  .idle .art.has-art { opacity: 0.55; }
+  .p-meta { flex: 1; min-width: 0; }
+  .p-title, .p-artist {
+    display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+  .p-title { font-size: 5.2vh; line-height: 1.16; -webkit-line-clamp: 3; }
+  .p-artist { margin-top: 1.2vh; font-size: 3.7vh; line-height: 1.25; color: var(--muted); -webkit-line-clamp: 2; }
+  .p-note { margin-top: 1.8vh; font-size: 2.9vh; line-height: 1.3; color: var(--muted); }
+  .p-note.alert { color: var(--warm); }
+
+  .p-progress { display: flex; align-items: center; gap: 1.2vw; font-size: 2.8vh; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .p-progress.off { visibility: hidden; }
+  .bar { flex: 1; height: 0.9vh; border-radius: 1vh; background: var(--line); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--text); border-radius: 1vh; }
+
+  .p-ctl { display: flex; align-items: center; justify-content: center; gap: 3.4vw; }
+  .btn {
+    width: 13vh; height: 13vh; flex: none;
+    border: 0; border-radius: 50%;
+    background: transparent; color: var(--text);
+    display: flex; align-items: center; justify-content: center;
+    -webkit-appearance: none; appearance: none; outline: none;
+  }
+  .btn svg { width: 5.6vh; height: 5.6vh; fill: currentColor; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .btn.main { width: 17vh; height: 17vh; background: var(--text); color: var(--bg); }
+  .btn.main svg { width: 6.6vh; height: 6.6vh; }
+  .btn:active { background: var(--raised); }
+  .btn.main:active { background: #c9c6c0; }
+  .btn[disabled] { opacity: 0.22; }
+
+  .p-vol { display: flex; align-items: center; gap: 0.8vw; }
+  .p-vol.off { visibility: hidden; }
+  .p-vol .btn { width: 9.5vh; height: 9.5vh; }
+  .p-vol .btn svg { width: 4.4vh; height: 4.4vh; }
+
+  .stale { position: fixed; left: 1.2vw; bottom: 0.6vh; font-size: 2.4vh; color: var(--muted); }
+  .stale[hidden] { display: none; }
+</style>
+</head>
+<body>
+<main class="dash">
+  <section class="info" id="info">
+    <div>
+      <div class="time" id="time">--<span class="colon">:</span>--</div>
+      <div class="date" id="date">&nbsp;</div>
+    </div>
+
+    <div class="now">
+      <div class="now-top">
+        <div class="now-icon" id="nowIcon"></div>
+        <div class="now-temp" id="nowTemp">--°</div>
+        <div class="now-text">
+          <div class="now-desc" id="nowDesc">&nbsp;</div>
+          <div class="now-meta" id="nowMeta">&nbsp;</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="strip" id="strip"></div>
+  </section>
+
+  <section class="player idle" id="player">
+    <div class="p-top">
+      <div class="art" id="pArt"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+      <div class="p-meta">
+        <div class="p-title" id="pTitle"></div>
+        <div class="p-artist" id="pArtist"></div>
+        <div class="p-note" id="pNote"></div>
+      </div>
+    </div>
+
+    <div class="p-progress off" id="pProgress">
+      <span id="pPos">0:00</span>
+      <div class="bar"><i id="pFill"></i></div>
+      <span id="pDur">0:00</span>
+    </div>
+
+    <div class="p-ctl">
+      <button class="btn" id="pPrev" aria-label="Previous" disabled><svg viewBox="0 0 24 24"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg></button>
+      <button class="btn main" id="pToggle" aria-label="Play or pause" disabled><svg viewBox="0 0 24 24" id="pToggleIcon"><polygon points="6 3 20 12 6 21 6 3"/></svg></button>
+      <button class="btn" id="pNext" aria-label="Next" disabled><svg viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg></button>
+    </div>
+
+    <div class="p-vol off" id="pVol">
+      <button class="btn" id="pVolDown" aria-label="Volume down"><svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+      <div class="bar"><i id="pVolFill"></i></div>
+      <button class="btn" id="pVolUp" aria-label="Volume up"><svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><line x1="12" y1="5" x2="12" y2="19"/></svg></button>
+    </div>
+  </section>
+</main>
+<div class="stale" id="stale" hidden>offline</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var params = new URLSearchParams(location.search);
+  var tz, hour12 = false, offset = 0, version = null;
+  var lastMinute = null, lastOk = 0;
+  var castState = 'pending', touches = 0, loadedAt = Date.now();
+
+  function $(id) { return document.getElementById(id); }
+
+  // ---------------------------------------------------------------- icons
+  var SUN = '<g class="sun"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></g>';
+  var MOON = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  var CLOUD = '<path class="cover" d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>';
+  var SMALL_SUN = '<g class="sun"><circle cx="17" cy="7.5" r="3.4"/><path d="M17 1.2v1.3M22 7.5h1.3M11.9 2.4l.9.9M21.2 3.3l.9-.9"/></g>';
+  var SMALL_MOON = '<path transform="translate(11.5 0) scale(.5)" vector-effect="non-scaling-stroke" d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  var LOW_CLOUD = '<g transform="translate(0 4.6) scale(.82)"><path class="cover" vector-effect="non-scaling-stroke" d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></g>';
+  var RAIN_TOP = '<path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/>';
+  var ICONS = {
+    clearDay: SUN,
+    clearNight: MOON,
+    partlyDay: SMALL_SUN + LOW_CLOUD,
+    partlyNight: SMALL_MOON + LOW_CLOUD,
+    cloudy: CLOUD,
+    fog: RAIN_TOP + '<path d="M7 19.5h11M9.5 23h6"/>',
+    drizzle: RAIN_TOP + '<path class="drop" d="M8 19v2M8 13v2M16 19v2M16 13v2M12 21v2M12 15v2"/>',
+    rain: RAIN_TOP + '<path class="drop" d="M16 13v8M8 13v8M12 15v8"/>',
+    snow: '<path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25"/><path class="drop" d="M8 16h.01M8 20h.01M12 18h.01M12 22h.01M16 16h.01M16 20h.01"/>',
+    thunder: '<path d="M19 16.9A5 5 0 0 0 18 7h-1.26a8 8 0 1 0-11.62 9"/><path class="sun" d="M13 11l-4 6h6l-4 6"/>'
+  };
+
+  function kind(code, isDay) {
+    if (code === 0 || code === 1) return isDay ? 'clearDay' : 'clearNight';
+    if (code === 2) return isDay ? 'partlyDay' : 'partlyNight';
+    if (code === 3) return 'cloudy';
+    if (code === 45 || code === 48) return 'fog';
+    if (code >= 51 && code <= 57) return 'drizzle';
+    if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return 'rain';
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
+    if (code >= 95) return 'thunder';
+    return 'cloudy';
+  }
+  function icon(code, isDay) {
+    return '<svg class="wx" viewBox="0 0 24 24" aria-hidden="true">' + ICONS[kind(code, isDay)] + '</svg>';
+  }
+  var TEXT = {
+    0: 'Clear', 1: 'Mostly clear', 2: 'Partly cloudy', 3: 'Overcast',
+    45: 'Fog', 48: 'Freezing fog',
+    51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle', 56: 'Freezing drizzle', 57: 'Freezing drizzle',
+    61: 'Light rain', 63: 'Rain', 65: 'Heavy rain', 66: 'Freezing rain', 67: 'Freezing rain',
+    71: 'Light snow', 73: 'Snow', 75: 'Heavy snow', 77: 'Snow grains',
+    80: 'Light showers', 81: 'Showers', 82: 'Heavy showers', 85: 'Snow showers', 86: 'Heavy snow showers',
+    95: 'Thunderstorm', 96: 'Thunderstorm, hail', 99: 'Thunderstorm, hail'
+  };
+  function deg(v) { return Math.round(v).toString().replace('-', '−') + '°'; }
+
+  // ---------------------------------------------------------------- clock
+  function tick() {
+    var d = new Date(Date.now() + offset);
+    var opts = { hour: '2-digit', minute: '2-digit', hour12: hour12 };
+    if (!hour12) opts.hourCycle = 'h23';
+    if (tz) opts.timeZone = tz;
+    var parts = {};
+    new Intl.DateTimeFormat('en-GB', opts).formatToParts(d).forEach(function (p) { parts[p.type] = p.value; });
+    var key = parts.hour + parts.minute;
+    if (key !== lastMinute) {
+      lastMinute = key;
+      $('time').innerHTML = parts.hour + '<span class="colon">:</span>' + parts.minute +
+        (hour12 && parts.dayPeriod ? '<span class="ampm">' + parts.dayPeriod + '</span>' : '');
+      var dopts = { weekday: 'long', day: 'numeric', month: 'long' };
+      if (tz) dopts.timeZone = tz;
+      var dp = {};
+      new Intl.DateTimeFormat('en-GB', dopts).formatToParts(d).forEach(function (p) { dp[p.type] = p.value; });
+      $('date').innerHTML = '<b>' + dp.weekday + '</b>, ' + dp.day + ' ' + dp.month;
+    }
+    $('stale').hidden = !lastOk || Date.now() - lastOk < 5 * 60 * 1000;
+  }
+
+  // -------------------------------------------------------------- weather
+  function renderWeather(w) {
+    if (!w) return;
+    $('nowIcon').innerHTML = icon(w.code, w.is_day);
+    $('nowTemp').textContent = deg(w.temp);
+    $('nowDesc').textContent = TEXT[w.code] || '';
+    var today = w.days && w.days[0];
+    $('nowMeta').innerHTML =
+      'Feels ' + deg(w.feels) + ' · ' + Math.round(w.wind) + ' m/s<br>' +
+      (today ? '↑' + deg(today.max) + ' ↓' + deg(today.min) + ' · ' : '') + w.place;
+
+    var html = '';
+    (w.hours || []).slice(0, 2).forEach(function (h) {
+      html += '<div class="cell"><span class="when">' + h.time.slice(11, 16) + '</span>' +
+        '<span class="ico">' + icon(h.code, h.is_day) + '</span><span>' + deg(h.temp) + '</span></div>';
+    });
+    html += '<div class="sep"></div>';
+    (w.days || []).slice(1, 3).forEach(function (d) {
+      var name = new Intl.DateTimeFormat('en-GB', { weekday: 'short', timeZone: 'UTC' })
+        .format(new Date(d.date + 'T12:00:00Z'));
+      html += '<div class="cell"><span class="when">' + name + '</span>' +
+        '<span class="ico">' + icon(d.code, 1) + '</span><span>' + deg(d.max) +
+        '<span class="lo">' + deg(d.min) + '</span></span></div>';
+    });
+    $('strip').innerHTML = html;
+  }
+
+  function refresh() {
+    var sent = Date.now();
+    fetch('/api/state', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (s) {
+        var rtt = Date.now() - sent;
+        offset = s.now + rtt / 2 - Date.now();
+        if (Math.abs(offset) < 2000) offset = 0;   // device clock is fine, don't jitter
+        tz = s.timezone; hour12 = !!s.hour12;
+        if (version && s.version !== version) { location.reload(); return; }
+        version = s.version;
+        lastOk = Date.now();
+        lastMinute = null;
+        renderWeather(s.weather);
+        tick();
+      })
+      .catch(function () { /* keep showing the last data */ });
+  }
+
+  // --------------------------------------------------------------- player
+  var player = null, holdUntil = 0, shownArt, alertUntil = 0;
+  var PLAY = '<polygon points="6 3 20 12 6 21 6 3"/>';
+  var PAUSE = '<rect x="6" y="4" width="4" height="16" rx="0.5"/><rect x="14" y="4" width="4" height="16" rx="0.5"/>';
+
+  function clock(ms) {
+    var s = Math.max(0, Math.floor(ms / 1000));
+    return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+  }
+
+  function setArt(url) {
+    if (url === shownArt) return;
+    shownArt = url;
+    $('pArt').style.backgroundImage = url ? 'url("' + url + '")' : '';
+    $('pArt').classList.toggle('has-art', !!url);
+  }
+
+  function note(text, alert) {
+    if (!alert && Date.now() < alertUntil) return;   // keep an error visible for a while
+    $('pNote').textContent = text || '';
+    $('pNote').classList.toggle('alert', !!alert);
+    if (alert) alertUntil = Date.now() + 6000;
+  }
+
+  function renderPlayer(p) {
+    player = p;
+    var ready = p && p.connected;
+    if (ready) startSpotifyPlayer(p.player_name);
+    var active = ready && p.active;
+    var show = active ? p : (ready && p.last) || null;
+
+    $('player').classList.toggle('idle', !active);
+    if (!ready) {
+      setArt(null);
+      $('pTitle').textContent = "Spotify isn't connected";
+      $('pArtist').textContent = p && p.configured
+        ? 'Sign in once to turn the player on.'
+        : 'Add the Spotify app ID to finish setup.';
+      note(p && p.error ? p.error : '', !!(p && p.error));
+    } else {
+      setArt(show ? show.art : null);
+      $('pTitle').textContent = show ? show.title : 'Nothing played yet';
+      $('pArtist').textContent = show ? show.artist : '';
+      note(p.error ? p.error
+           : active ? (p.device ? 'Playing on ' + p.device : '')
+           : p.local_ready ? 'Tap play to pick up where you left off'
+           : 'Playing here needs the HTTPS setup',
+           !!p.error);
+      if (active && !p.playing) note(p.device ? 'Paused on ' + p.device : 'Paused');
+    }
+
+    $('pToggleIcon').innerHTML = active && p.playing ? PAUSE : PLAY;
+    // With nothing playing, play only works once this page can play by itself.
+    $('pToggle').disabled = !ready || (!active && !p.local_ready && !needTap);
+    $('pPrev').disabled = !active;
+    $('pNext').disabled = !active;
+
+    $('pProgress').classList.toggle('off', !active || !p.duration_ms);
+    var canVol = active && p.can_volume && p.volume != null;
+    $('pVol').classList.toggle('off', !canVol);
+    if (canVol) $('pVolFill').style.width = p.volume + '%';
+    drawProgress();
+  }
+
+  function drawProgress() {
+    var p = player;
+    if (!p || !p.active || !p.duration_ms) return;
+    var pos = p.progress_ms + (p.playing ? Date.now() + offset - p.at : 0);
+    pos = Math.max(0, Math.min(p.duration_ms, pos));
+    $('pPos').textContent = clock(pos);
+    $('pDur').textContent = clock(p.duration_ms);
+    $('pFill').style.width = (100 * pos / p.duration_ms) + '%';
+  }
+
+  var DEMO = {
+    playing: { configured: true, connected: true, active: true, playing: true, title: 'Never Catch Me (feat. Kendrick Lamar)',
+      artist: 'Flying Lotus, Kendrick Lamar', device: 'Kitchen display', volume: 55, can_volume: true,
+      progress_ms: 83000, duration_ms: 234000, at: Date.now(), art: null },
+    idle: { configured: true, connected: true, active: false, playing: false, local_ready: true,
+      last: { title: 'Quiet', artist: 'Kuoga.', art: null } },
+    setup: { configured: false, connected: false }
+  };
+
+  function pollPlayer() {
+    if (params.get('demo')) { if (!player) renderPlayer(DEMO[params.get('demo')] || DEMO.setup); return; }
+    if (Date.now() < holdUntil) return;   // let a just-sent command take effect first
+    fetch('/api/player', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (p) { if (Date.now() >= holdUntil) renderPlayer(p); })
+      .catch(function () {});
+  }
+
+  function command(action, value) {
+    if (!player || !player.connected) return;
+    var wasPlaying = player.active && player.playing;
+    // Show the result straight away; the next poll confirms the real state.
+    if (action === 'toggle' && player.active) {
+      if (player.playing) player.progress_ms += Date.now() + offset - player.at;
+      player.at = Date.now() + offset;
+      player.playing = !player.playing;
+    }
+    if (action === 'volume') player.volume = value;
+    renderPlayer(player);
+    if (action === 'toggle' && !player.active) note('Starting…');
+    holdUntil = Date.now() + 2500;
+    if (params.get('demo')) return;
+
+    // Music playing in this page: act on the in-page player directly. Doing
+    // it inside the tap is also what lets the browser start sound.
+    if (sp) { try { sp.activateElement(); } catch (e) {} }
+    if (action === 'toggle' && sp && (needTap || (player.active && player.on_dashboard))) {
+      needTap = false;
+      alertUntil = 0;
+      (wasPlaying ? sp.pause() : sp.resume()).catch(function () {});
+      setTimeout(pollPlayer, 2600);
+      return;
+    }
+    fetch('/api/player', { method: 'POST', body: JSON.stringify({ action: action, value: value }) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.ok) { holdUntil = 0; pollPlayer(); note(res.message || 'That did not work.', true); }
+      })
+      .catch(function () { holdUntil = 0; note('The dashboard server is not responding.', true); });
+    setTimeout(pollPlayer, 2600);
+  }
+
+  $('pToggle').addEventListener('click', function () { command('toggle'); });
+  $('pPrev').addEventListener('click', function () { command('prev'); });
+  $('pNext').addEventListener('click', function () { command('next'); });
+  $('pVolDown').addEventListener('click', function () { command('volume', Math.max(0, player.volume - 6)); });
+  $('pVolUp').addEventListener('click', function () { command('volume', Math.min(100, player.volume + 6)); });
+
+  // ------------------------------------------------- in-page Spotify player
+  // On a secure (https) page the dashboard is its own Spotify device, so music
+  // plays on the Hub without Spotify's own app taking over the screen.
+  var sp = null, sdkState = 'off', sdkDevice, sdkStarted = false, needTap = false;
+
+  function startSpotifyPlayer(name) {
+    if (sdkStarted || params.get('demo')) return;
+    // Desktop previews stay silent unless asked (?player=1).
+    if (!/CrKey/.test(navigator.userAgent) && params.get('player') !== '1') return;
+    sdkStarted = true;
+    if (!window.isSecureContext) { sdkState = 'needs-https'; return; }
+    if (!navigator.requestMediaKeySystemAccess) { sdkState = 'no-drm-support'; return; }
+    sdkState = 'loading';
+
+    window.onSpotifyWebPlaybackSDKReady = function () {
+      try {
+        sp = new window.Spotify.Player({
+          name: name || 'Dashboard',
+          volume: 1,
+          getOAuthToken: function (cb) {
+            fetch('/api/spotify/token', { cache: 'no-store' })
+              .then(function (r) { return r.json(); })
+              .then(function (d) { if (d.token) cb(d.token); })
+              .catch(function () {});
+          }
+        });
+      } catch (e) { sdkState = 'error: ' + e.message; beat('sdk:' + sdkState); return; }
+
+      sp.addListener('ready', function (e) { sdkDevice = e.device_id; sdkState = 'ready'; beat('sdk:ready'); });
+      sp.addListener('not_ready', function () { sdkDevice = null; sdkState = 'not-ready'; beat('sdk:not-ready'); });
+      ['initialization_error', 'authentication_error', 'account_error', 'playback_error'].forEach(function (type) {
+        sp.addListener(type, function (e) {
+          var text = type + ': ' + (e && e.message);
+          if (type !== 'playback_error') { sdkState = text; sdkDevice = null; }
+          beat('sdk:' + text);
+        });
+      });
+      sp.addListener('autoplay_failed', function () {
+        needTap = true;
+        note('Tap play to continue here', true);
+        beat('sdk:autoplay_failed');
+      });
+      // The in-page player knows its own state first; show it without waiting
+      // for the next poll.
+      sp.addListener('player_state_changed', function (st) {
+        var track = st && st.track_window && st.track_window.current_track;
+        if (!track || !player || !player.connected) return;
+        var images = (track.album && track.album.images) || [];
+        var best = images.reduce(function (a, b) { return (b.height || 0) > (a.height || 0) ? b : a; }, images[0] || {});
+        if (!st.paused) needTap = false;
+        player.active = true;
+        player.on_dashboard = true;
+        player.playing = !st.paused;
+        player.title = track.name;
+        player.artist = (track.artists || []).map(function (a) { return a.name; }).join(', ');
+        player.art = best.url || player.art;
+        player.device = name || 'Dashboard';
+        player.progress_ms = st.position;
+        player.duration_ms = st.duration;
+        player.at = Date.now() + offset;
+        if (player.volume == null) { player.volume = 100; player.can_volume = true; }
+        holdUntil = Date.now() + 1500;
+        renderPlayer(player);
+      });
+      sp.connect().then(function (ok) {
+        if (!ok) { sdkState = 'connect-failed'; beat('sdk:connect-failed'); }
+      });
+    };
+
+    var s = document.createElement('script');
+    s.src = 'https://sdk.scdn.co/spotify-player.js';
+    s.onerror = function () { sdkState = 'sdk-load-failed'; beat('sdk:' + sdkState); };
+    document.head.appendChild(s);
+  }
+
+  // ------------------------------------------------------------ heartbeat
+  function beat(event) {
+    var info = $('info'), card = $('player');
+    var body = {
+      up: Math.round((Date.now() - loadedAt) / 1000),
+      cast: castState,
+      touches: touches,
+      visible: document.visibilityState,
+      w: innerWidth, h: innerHeight, dpr: devicePixelRatio,
+      // layout check, measured on the device itself
+      fit: {
+        infoOverflow: info.scrollHeight - info.clientHeight,
+        cardOverflow: card.scrollHeight - card.clientHeight,
+        timeRight: Math.round($('time').getBoundingClientRect().right),
+        cardLeft: Math.round(card.getBoundingClientRect().left),
+        cardBottom: Math.round(card.getBoundingClientRect().bottom),
+        stripBottom: Math.round($('strip').getBoundingClientRect().bottom)
+      },
+      player: !player ? 'none' : !player.connected ? 'not-connected' : player.active
+        ? (player.playing ? 'playing' : 'paused') + ':' + player.device : 'idle',
+      sdk: sdkState,
+      sdkDevice: sdkDevice,   // left out entirely until the in-page player has started
+      ua: navigator.userAgent
+    };
+    if (event) body.event = event;
+    try {
+      fetch('/api/beat', { method: 'POST', body: JSON.stringify(body), keepalive: true })
+        .catch(function () {});
+    } catch (e) {}
+  }
+
+  // ---------------------------------------------------------- cast receiver
+  // On the Hub, registering as a Cast receiver with the idle timeout disabled
+  // is what stops the device from dropping back to its ambient screen.
+  function startCast() {
+    if (!/CrKey/.test(navigator.userAgent)) { castState = 'not-a-cast-device'; return; }
+    if (params.get('cast') === '0') { castState = 'disabled'; return; }
+    var s = document.createElement('script');
+    s.src = 'https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js';
+    s.onload = function () {
+      try {
+        var fw = window.cast.framework;
+        var ctx = fw.CastReceiverContext.getInstance();
+        var o = new fw.CastReceiverOptions();
+        o.disableIdleTimeout = true;
+        o.skipPlayersLoad = true;
+        try {
+          o.uiConfig = new fw.ui.UiConfig();
+          o.uiConfig.touchScreenOptimizedApp = true;
+        } catch (e) {}
+        ['READY', 'SHUTDOWN', 'SENDER_CONNECTED', 'SENDER_DISCONNECTED', 'ERROR'].forEach(function (name) {
+          var type = fw.system.EventType[name];
+          if (type) ctx.addEventListener(type, function () { beat('cast:' + name); });
+        });
+        ctx.start(o);
+        castState = 'started';
+      } catch (e) {
+        castState = 'error: ' + (e && e.message);
+      }
+      beat('cast-init:' + castState);
+    };
+    s.onerror = function () { castState = 'sdk-load-failed'; beat('cast-init:' + castState); };
+    document.head.appendChild(s);
+  }
+
+  document.addEventListener('pointerdown', function () {
+    touches++;
+    // Any touch unlocks sound for the in-page player.
+    if (sp) { try { sp.activateElement(); } catch (e) {} }
+  });
+  document.addEventListener('visibilitychange', function () { beat('visibility:' + document.visibilityState); });
+  window.addEventListener('error', function (e) { beat('js-error: ' + e.message); });
+
+  tick();
+  refresh();
+  pollPlayer();
+  startCast();
+  beat('loaded');
+  setInterval(tick, 1000);
+  setInterval(drawProgress, 1000);
+  setInterval(refresh, 60 * 1000);
+  setInterval(pollPlayer, 2000);
+  setInterval(beat, 15 * 1000);
+})();
+</script>
+</body>
+</html>

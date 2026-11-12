@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hubdash-preview",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["server.py", "--no-keeper"],
+      "port": 8765
+    },
+    {
+      "name": "hubdash",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["server.py"],
+      "port": 8765
+    }
+  ]
+}
