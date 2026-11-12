@@ -81,6 +81,7 @@ class Spotify:
         # Per-track extras: is it liked, and what comes next.
         self._extras: dict = {}
         self._library: dict | None = None
+        self._named: dict[str, dict | None] = {}   # playlists looked up by URI (None: no access)
         self._library_at = 0.0
         # Recent refusals from Spotify, for /api/debug.
         self.errors: collections.deque = collections.deque(maxlen=12)
@@ -373,21 +374,37 @@ class Spotify:
                                       "art": art(item.get("images")), "kind": "Playlist"})
             by_uri = {entry["uri"]: entry for entry in playlists}
 
-            recent, seen = [], set()
+            recent, seen, lookups = [], set(), 0
             status, p = self._api("GET", "/me/player/recently-played", {"limit": 50})
             for item in ((p or {}).get("items") or []) if status == 200 else []:
-                context = (item.get("context") or {}).get("uri")
+                context = (item.get("context") or {}).get("uri") or ""
                 album = (item.get("track") or {}).get("album") or {}
-                if context and context in by_uri:
+                if context in seen:
+                    continue
+                if context in by_uri:
                     entry = by_uri[context]
-                elif album.get("uri") and (not context or context == album["uri"]):
-                    entry = {"uri": album["uri"], "name": album.get("name") or "Album",
+                elif context and context == album.get("uri"):
+                    # Only an album that was played as an album: a track played
+                    # from Liked Songs or a search has no context to return to.
+                    entry = {"uri": context, "name": album.get("name") or "Album",
                              "art": art(album.get("images")), "kind": "Album"}
+                elif context.startswith("spotify:playlist:"):
+                    # Someone else's playlist: ask for its name, a few at a time.
+                    if context not in self._named and lookups < 5:
+                        lookups += 1
+                        status, info = self._api("GET", "/playlists/" + context.rsplit(":", 1)[1],
+                                                 {"fields": "name,images"})
+                        self._named[context] = (
+                            {"uri": context, "name": info["name"], "art": art(info.get("images")), "kind": "Playlist"}
+                            if status == 200 and info and info.get("name") else None
+                        )
+                    entry = self._named.get(context)
+                    if entry is None:
+                        continue
                 else:
-                    continue  # a playlist of someone else's: no name to show for it
-                if entry["uri"] not in seen:
-                    seen.add(entry["uri"])
-                    recent.append(entry)
+                    continue
+                seen.add(context)
+                recent.append(entry)
             # Liked Songs is not something Spotify can be told to play as a
             # whole, so it is offered as its own entry and played as a list of
             # the most recently liked tracks (see _liked_uris).

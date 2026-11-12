@@ -35,6 +35,8 @@ class FakeApi:
             return 200, {"queue": self.queue}
         if path == "/me/playlists":
             return 200, {"items": self.playlists}
+        if path == "/playlists/shared":
+            return 200, {"name": "A friend's mix", "images": []}
         if path == "/me/tracks":
             start = int((query or {}).get("offset", 0))
             page = self.saved[start:start + int(query["limit"])]
@@ -248,13 +250,20 @@ class SpotifyTests(unittest.TestCase):
         self.api.recent = [
             self.played("a", "spotify:playlist:mix"),
             self.played("b", "spotify:album:a1"),
-            self.played("c", "spotify:playlist:someone-elses"),
+            self.played("c", "spotify:playlist:no-access"),
             self.played("d", "spotify:playlist:mix"),
+            self.played("e"),                             # from Liked Songs: no context
+            self.played("f", "spotify:playlist:shared"),  # someone else's, but readable
         ]
         lib = self.sp.library()
         self.assertEqual([e["uri"] for e in lib["playlists"]], ["spotify:playlist:mix"])
-        self.assertEqual([(e["uri"], e["kind"]) for e in lib["recent"]],
-                         [("spotify:playlist:mix", "Playlist"), ("spotify:album:a1", "Album")])
+        self.assertEqual([(e["uri"], e["name"]) for e in lib["recent"]],
+                         [("spotify:playlist:mix", "Mix"), ("spotify:album:a1", "Album"),
+                          ("spotify:playlist:shared", "A friend's mix")])
+        # A playlist that could not be read is not asked about again.
+        self.sp._library = None
+        self.sp.library()
+        self.assertEqual(sum(1 for c in self.api.calls if c[1] == "/playlists/no-access"), 1)
         self.assertEqual(lib["playlists"][0]["art"], "big")
 
     def test_library_offers_liked_songs(self):
