@@ -84,14 +84,12 @@ Put `docker-compose.yml` and a `.env` (see `.env.example`) in a folder on the
 server, then:
 
 ```bash
-mkdir -p data && sudo chown 1000 data
-```
-
-```bash
 docker compose pull && docker compose up -d
 ```
 
-To update after a release, run that last command again. To build from source
+To update after a release, run that command again. The container starts as
+root only to make the mounted `data` folder writable, then runs the service
+as an unprivileged user (uid 1000). To build from source
 instead of pulling, copy the whole repository and use
 `docker compose up -d --build`.
 

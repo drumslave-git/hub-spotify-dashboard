@@ -66,6 +66,8 @@ class Spotify:
         self._takeover_until = 0.0
         self._handoff: dict | None = None
         self.error = ""
+        # Set when the sign-in could not be written to disk.
+        self.store_error = ""
         try:
             self._refresh = json.loads(store.read_text(encoding="utf-8")).get("refresh_token")
         except (OSError, ValueError):
@@ -134,8 +136,14 @@ class Spotify:
         return None
 
     def _save(self) -> None:
-        self._store.parent.mkdir(parents=True, exist_ok=True)
-        self._store.write_text(json.dumps({"refresh_token": self._refresh}), encoding="utf-8")
+        """Keep the sign-in across restarts. A failure must not undo the sign-in."""
+        try:
+            self._store.parent.mkdir(parents=True, exist_ok=True)
+            self._store.write_text(json.dumps({"refresh_token": self._refresh}), encoding="utf-8")
+            self.store_error = ""
+        except OSError as err:
+            self.store_error = f"{self._store}: {err.strerror or err}"
+            log.error("spotify: could not save the sign-in (%s)", self.store_error)
 
     def _token(self) -> str | None:
         with self._lock:

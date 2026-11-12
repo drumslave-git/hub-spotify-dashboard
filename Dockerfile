@@ -9,13 +9,13 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY server.py spotify.py ./
+COPY server.py spotify.py docker-entrypoint.py ./
 COPY web ./web
 
-# uid 1000 so a ./data folder owned by the usual host user is writable.
+# The service runs as this unprivileged user. The container itself starts as
+# root so the entrypoint can make the mounted data folder writable first.
 RUN useradd --uid 1000 --no-create-home app \
     && mkdir -p /app/data && chown app /app/data
-USER app
 
 EXPOSE 8765
 
@@ -23,4 +23,5 @@ EXPOSE 8765
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/api/health' % os.environ.get('PORT','8765'), timeout=4)"
 
+ENTRYPOINT ["python", "docker-entrypoint.py"]
 CMD ["python", "server.py"]

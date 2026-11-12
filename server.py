@@ -370,6 +370,14 @@ class Handler(BaseHTTPRequestHandler):
             )
             if error:
                 self._html(error, 400)
+            elif spotify.store_error:
+                keeper.note(f"spotify: signed in, but not saved ({spotify.store_error})")
+                self._html(
+                    "Spotify is connected, but the sign-in could not be saved "
+                    f"({spotify.store_error}). It works until the service restarts; "
+                    "make the data folder writable and sign in again to keep it.",
+                    200,
+                )
             else:
                 keeper.note("spotify: signed in")
                 self._html("Spotify is connected. You can close this tab.")
@@ -455,6 +463,14 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
+class Server(ThreadingHTTPServer):
+    def handle_error(self, request, client_address) -> None:
+        # A browser that reloads or leaves mid-response is not an error.
+        if isinstance(sys.exc_info()[1], (BrokenPipeError, ConnectionResetError)):
+            return
+        super().handle_error(request, client_address)
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
@@ -463,7 +479,7 @@ def main() -> None:
         keeper.start()
     else:
         keeper.state = "disabled"
-    server = ThreadingHTTPServer(("0.0.0.0", CONFIG["port"]), Handler)
+    server = Server(("0.0.0.0", CONFIG["port"]), Handler)
     log.info("serving on port %s, casting %s", CONFIG["port"], CONFIG["public_url"])
     server.serve_forever()
 

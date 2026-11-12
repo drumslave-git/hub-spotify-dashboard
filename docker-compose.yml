@@ -12,7 +12,8 @@ services:
     # page is served on PORT.
     network_mode: host
 
-    # Holds the Spotify sign-in (spotify.json). Must be writable by uid 1000.
+    # Holds the Spotify sign-in (spotify.json). The container makes the folder
+    # writable for its own user on start.
     volumes:
       - "${DATA_PATH:-./data}:/app/data"
 

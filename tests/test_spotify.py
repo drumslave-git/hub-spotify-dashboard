@@ -127,6 +127,21 @@ class SpotifyTests(unittest.TestCase):
         self.assertFalse(self.sp.local_ready)
         self.assertTrue(self.sp.local_recent)
 
+    def test_sign_in_survives_an_unwritable_data_folder(self):
+        blocker = Path(tempfile.mkdtemp()) / "not-a-folder"
+        blocker.write_text("x")
+        sp = mod.Spotify("cid", "http://127.0.0.1/cb", blocker / "s.json")
+        sp._refresh = "refresh"
+        sp._save()  # must not raise
+        self.assertIn("s.json", sp.store_error)
+        self.assertTrue(sp.connected)
+
+    def test_saved_sign_in_is_read_back(self):
+        self.sp._save()
+        self.assertEqual(self.sp.store_error, "")
+        again = mod.Spotify("cid", "http://127.0.0.1/cb", self.sp._store)
+        self.assertTrue(again.connected)
+
     def test_not_connected(self):
         self.sp._refresh = None
         self.assertEqual(self.sp.command("toggle"), (False, "Spotify is not connected."))

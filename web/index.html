@@ -485,6 +485,12 @@
       ['initialization_error', 'authentication_error', 'account_error', 'playback_error'].forEach(function (type) {
         sp.addListener(type, function (e) {
           var text = type + ': ' + (e && e.message);
+          if (type === 'initialization_error') {
+            // Spotify's player lives in a frame it adds itself; say what it got.
+            text += ' [frames: ' + [].map.call(document.querySelectorAll('iframe'), function (f) {
+              return (f.src || '').split('?')[0] + ' allow=' + (f.getAttribute('allow') || '-');
+            }).join('; ') + ']';
+          }
           if (type !== 'playback_error') { sdkState = text; sdkDevice = null; }
           beat('sdk:' + text);
         });
@@ -527,6 +533,51 @@
     document.head.appendChild(s);
   }
 
+  // What protected playback this browser supports. Spotify's player needs
+  // Widevine with AAC; the result goes out with the heartbeat so it can be read
+  // on /api/debug for the device the page is actually running on.
+  var drm = null;
+  function probeDrm() {
+    if (drm || params.get('demo')) return;
+    if (!/CrKey/.test(navigator.userAgent) && params.get('player') !== '1') return;
+    if (!window.isSecureContext) { drm = { error: 'needs-https' }; return; }
+    if (!navigator.requestMediaKeySystemAccess) { drm = { error: 'no-drm-api' }; return; }
+    drm = {};
+    var systems = {
+      widevine: 'com.widevine.alpha',
+      playready: 'com.microsoft.playready',
+      castPlayready: 'com.chromecast.playready',
+      clearkey: 'org.w3.clearkey'
+    };
+    var aac = 'audio/mp4; codecs="mp4a.40.2"';
+    var cases = {
+      'aac': { audioCapabilities: [{ contentType: aac }] },
+      'aac-sw': { audioCapabilities: [{ contentType: aac, robustness: 'SW_SECURE_CRYPTO' }] },
+      'aac+video': {
+        audioCapabilities: [{ contentType: aac }],
+        videoCapabilities: [{ contentType: 'video/mp4; codecs="avc1.42E01E"' }]
+      },
+      'opus': { audioCapabilities: [{ contentType: 'audio/webm; codecs="opus"' }] },
+      'vorbis': { audioCapabilities: [{ contentType: 'audio/webm; codecs="vorbis"' }] },
+      'flac': { audioCapabilities: [{ contentType: 'audio/mp4; codecs="flac"' }] }
+    };
+    var jobs = [];
+    Object.keys(systems).forEach(function (system) {
+      drm[system] = [];
+      Object.keys(cases).forEach(function (name) {
+        var config = Object.assign({ initDataTypes: ['cenc'] }, cases[name]);
+        var job;
+        try { job = navigator.requestMediaKeySystemAccess(systems[system], [config]); }
+        catch (e) { job = Promise.reject(e); }
+        jobs.push(job.then(
+          function () { drm[system].push(name); },
+          function (e) { drm[system + 'Error'] = (e && e.name) || String(e); }
+        ));
+      });
+    });
+    Promise.all(jobs).then(function () { beat('drm:' + JSON.stringify(drm)); });
+  }
+
   // ------------------------------------------------------------ heartbeat
   function beat(event) {
     var info = $('info'), card = $('player');
@@ -548,6 +599,7 @@
       player: !player ? 'none' : !player.connected ? 'not-connected' : player.active
         ? (player.playing ? 'playing' : 'paused') + ':' + player.device : 'idle',
       sdk: sdkState,
+      drm: drm || undefined,
       sdkDevice: sdkDevice,   // left out entirely until the in-page player has started
       ua: navigator.userAgent
     };
@@ -604,6 +656,7 @@
   refresh();
   pollPlayer();
   startCast();
+  probeDrm();
   beat('loaded');
   setInterval(tick, 1000);
   setInterval(drawProgress, 1000);
