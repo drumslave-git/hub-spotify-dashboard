@@ -10,6 +10,9 @@ on:
     # Only wake the workflow when the VERSION file is touched.
     paths:
       - "VERSION"
+  # Run it by hand (Actions tab -> Release -> Run workflow) to publish the
+  # current VERSION again, e.g. after a failed run.
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
@@ -24,19 +27,24 @@ jobs:
       version: ${{ steps.check.outputs.version }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          # Need the previous commit to diff the version field.
-          fetch-depth: 2
 
       - id: check
-        name: Compare VERSION against previous commit
+        name: Compare VERSION against main before this push
+        # Compare with the commit main pointed to before the push, not with
+        # HEAD~1: a push of several commits may bump VERSION in an earlier one.
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
         run: |
           current=$(tr -d '[:space:]' < VERSION)
           echo "version=$current" >> "$GITHUB_OUTPUT"
-          if git cat-file -e HEAD~1:VERSION 2>/dev/null; then
-            previous=$(git show HEAD~1:VERSION | tr -d '[:space:]')
-          else
-            previous=""
+          previous=""
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "Started by hand -> release the current version."
+          elif [ -n "$BEFORE" ] && [ -n "${BEFORE//0/}" ] \
+               && git fetch -q --depth=1 origin "$BEFORE" \
+               && git cat-file -e "$BEFORE:VERSION" 2>/dev/null; then
+            previous=$(git show "$BEFORE:VERSION" | tr -d '[:space:]')
           fi
           echo "previous='$previous' current='$current'"
           if [ "$current" != "$previous" ]; then
