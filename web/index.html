@@ -37,7 +37,6 @@
     -webkit-touch-callout: none;
   }
   body { transition: background-color 0.8s; }
-  body.np-on { background: var(--tint); }
   /* On a smart display the Cast system adds its own media-control layer over
      the page. It is invisible here but would swallow every tap. */
   touch-controls { display: none !important; pointer-events: none !important; }
@@ -61,7 +60,6 @@
   svg.wx .sun { stroke: var(--warm); }
   svg.wx .drop { stroke: var(--cool); }
   svg.wx .cover { fill: var(--bg); }
-  .np svg.wx .cover { fill: var(--tint); }
 
   /* ------------------------------------------------------------- buttons */
   button {
@@ -143,29 +141,37 @@
   .bar-sub { margin-top: 4px; font-size: 16px; color: rgba(255,255,255,0.75); }
   .bar-sub.alert { color: var(--warm); }
 
-  /* ------------------------------------------- now playing: cover first */
-  .np { padding: 24px; display: flex; gap: 28px; background: var(--tint); color: #fff; }
-  .np .art { width: 552px; height: 552px; flex: none; border-radius: 16px; box-shadow: 0 20px 48px rgba(0,0,0,0.35); }
-  .np .art svg { width: 120px; height: 120px; stroke-width: 1.2; }
-  .np-side { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  /* Time and weather shrink to one quiet line while music plays. */
-  .mini { display: flex; justify-content: space-between; align-items: flex-start; padding-top: 2px; color: rgba(255,255,255,0.78); }
-  .mini-time { font-size: 52px; font-weight: 300; line-height: 0.95; letter-spacing: -0.04em; color: #fff; white-space: nowrap; }
-  .mini-date, .mini-rain { margin-top: 6px; font-size: 15px; white-space: nowrap; }
-  .mini-right { text-align: right; min-width: 0; }
-  .mini-wx { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
-  .mini-icon { width: 30px; height: 30px; color: #fff; }
-  .mini-temp { font-size: 38px; font-weight: 300; line-height: 1; letter-spacing: -0.03em; color: #fff; }
-  .np-meta { margin-top: auto; }
-  .np-note { font-size: 15px; color: rgba(255,255,255,0.7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* ----------------- now playing: time and weather left, a cover-tinted panel right */
+  .np { display: grid; grid-template-columns: 400px 624px; background: var(--bg); }
+  .np-info { padding: 30px 28px 28px 32px; display: flex; flex-direction: column; justify-content: space-between; min-width: 0; }
+  .np-info .time { font-size: 128px; line-height: 0.88; letter-spacing: -0.045em; }
+  .np-info .date { margin-top: 16px; font-size: 21px; }
+  .np-info .now-icon { width: 54px; height: 54px; }
+  .np-info .now-temp { font-size: 64px; }
+  .np-info .now-desc { font-size: 19px; }
+  .np-rain { margin-top: 14px; font-size: 15px; color: var(--muted); white-space: nowrap; }
+  .np-rain.wet { color: var(--cool); }
+  .np-info .fc { margin-top: 0; }
+  .np-info .fc-row { height: 38px; }
+
+  .np-panel {
+    padding: 28px; min-width: 0;
+    display: flex; flex-direction: column; justify-content: space-between;
+    background: var(--tint); color: #fff;
+    transition: background-color 0.8s;
+  }
+  .np-top { display: flex; gap: 24px; height: 264px; }
+  .np .art { width: 264px; height: 264px; flex: none; border-radius: 12px; box-shadow: 0 18px 40px rgba(0,0,0,0.4); }
+  .np .art svg { width: 80px; height: 80px; stroke-width: 1.2; }
+  .np-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
+  .np-note { font-size: 15px; color: rgba(255,255,255,0.7); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .np-note.alert { color: var(--warm); }
-  .np-title { margin-top: 8px; font-size: 31px; font-weight: 600; line-height: 1.12; letter-spacing: -0.015em; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
-  .np-artist, .np-next { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .np-artist { margin-top: 6px; font-size: 19px; color: rgba(255,255,255,0.75); }
-  .np-next { margin-top: 6px; font-size: 15px; color: rgba(255,255,255,0.6); min-height: 1.3em; }
+  .np-title { margin-top: 10px; font-size: 31px; font-weight: 600; line-height: 1.12; letter-spacing: -0.015em; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
+  .np-artist { margin-top: 8px; font-size: 20px; color: rgba(255,255,255,0.75); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .np-meta .chip { margin-top: auto; }
   /* The seek bar: a thick track with a handle, in a strip tall enough to
      land a finger on. Tap anywhere on it, or drag the handle. */
-  .seek { margin-top: 10px; height: 48px; position: relative; display: flex; align-items: center; touch-action: none; }
+  .seek { height: 48px; position: relative; display: flex; align-items: center; touch-action: none; }
   .track { flex: 1; height: 14px; border-radius: 7px; background: rgba(255,255,255,0.2); overflow: hidden; }
   .track i { display: block; height: 100%; width: 0; background: var(--tint-hi); }
   .knob {
@@ -176,9 +182,16 @@
     transition: transform 0.08s;
   }
   .seek.drag .knob { transform: scale(1.35); }
-  .times { display: flex; justify-content: space-between; font-size: 14px; color: rgba(255,255,255,0.75); }
-  .transport { margin-top: 6px; display: flex; align-items: center; justify-content: center; gap: 28px; }
-  .tools { margin-top: 14px; display: flex; justify-content: space-between; }
+  .times { display: flex; justify-content: space-between; font-size: 15px; color: rgba(255,255,255,0.75); }
+  .transport { display: flex; align-items: center; justify-content: space-between; padding: 0 8px; }
+  .transport .chip { background: transparent; }
+  .transport .chip:active { background: rgba(255,255,255,0.18); }
+  .transport .chip.on { background: rgba(255,255,255,0.18); color: var(--tint-hi); }
+  .np-foot { display: flex; align-items: center; gap: 12px; }
+  .np-next { flex: 1; min-width: 0; font-size: 15px; line-height: 1.35; color: rgba(255,255,255,0.65); }
+  .np-next b { display: block; font-size: 17px; font-weight: 400; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .np-foot .pill { max-width: 220px; }
+  .np-foot .pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* A list over the screen: what to play, or where to play it. Paged instead
      of scrolled, so it does not depend on the device's touch scrolling. */
@@ -272,41 +285,53 @@
   </section>
 
   <section class="view np" id="player">
-    <div class="art" id="pArt"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
-    <div class="np-side" id="side">
-      <div class="mini">
-        <div>
-          <div class="mini-time" id="miniTime"></div>
-          <div class="mini-date" id="miniDate"></div>
+    <div class="np-info">
+      <div>
+        <div class="time" id="npTime">--<span class="colon">:</span>--</div>
+        <div class="date" id="npDate">&nbsp;</div>
+      </div>
+      <div>
+        <div class="now">
+          <div class="now-icon" id="npIcon"></div>
+          <div class="now-temp" id="npTemp">--°</div>
+          <div class="now-text">
+            <div class="now-desc" id="npDesc">&nbsp;</div>
+            <div class="now-meta" id="npMeta">&nbsp;</div>
+          </div>
         </div>
-        <div class="mini-right">
-          <div class="mini-wx"><span class="mini-icon" id="miniIcon"></span><span class="mini-temp" id="miniTemp"></span></div>
-          <div class="mini-rain" id="miniRain"></div>
+        <div class="np-rain" id="npRain"></div>
+      </div>
+      <div class="fc" id="npStrip"></div>
+    </div>
+
+    <div class="np-panel" id="side">
+      <div class="np-top">
+        <div class="art" id="pArt"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+        <div class="np-meta">
+          <div class="np-note" id="pNote"></div>
+          <div class="np-title" id="pTitle"></div>
+          <div class="np-artist" id="pArtist"></div>
+          <button class="chip fill" id="pLike" aria-label="Like" disabled><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></button>
         </div>
       </div>
 
-      <div class="np-meta">
-        <div class="np-note" id="pNote"></div>
-        <div class="np-title" id="pTitle"></div>
-        <div class="np-artist" id="pArtist"></div>
-        <div class="np-next" id="pNextUp"></div>
+      <div>
+        <div class="seek" id="pSeek"><div class="track"><i id="pFill"></i></div><div class="knob" id="pKnob"></div></div>
+        <div class="times"><span id="pPos">0:00</span><span id="pDur">0:00</span></div>
       </div>
-
-      <div class="seek" id="pSeek"><div class="track"><i id="pFill"></i></div><div class="knob" id="pKnob"></div></div>
-      <div class="times"><span id="pPos">0:00</span><span id="pDur">0:00</span></div>
 
       <div class="transport">
+        <button class="chip" id="pShuffle" aria-label="Shuffle" disabled><svg viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></button>
         <button class="big" id="pPrev" aria-label="Previous" disabled><svg viewBox="0 0 24 24"><path d="M19 5.5v13L9.5 12z"/><line x1="6" y1="5.5" x2="6" y2="18.5"/></svg></button>
         <button class="main" id="pToggle" aria-label="Play or pause" disabled><svg viewBox="0 0 24 24" id="pToggleIcon"><path d="M7 4.5v15l13-7.5z"/></svg></button>
         <button class="big" id="pNext" aria-label="Next" disabled><svg viewBox="0 0 24 24"><path d="M5 5.5v13l9.5-6.5z"/><line x1="18" y1="5.5" x2="18" y2="18.5"/></svg></button>
+        <button class="chip" id="pRepeat" aria-label="Repeat" disabled><svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><path class="one" d="M11 10.5l1.2-1v5"/></svg></button>
       </div>
 
-      <div class="tools">
-        <button class="chip" id="pShuffle" aria-label="Shuffle" disabled><svg viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></button>
-        <button class="chip" id="pRepeat" aria-label="Repeat" disabled><svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><path class="one" d="M11 10.5l1.2-1v5"/></svg></button>
-        <button class="chip fill" id="pLike" aria-label="Like" disabled><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></button>
-        <button class="chip" id="pLibrary" aria-label="Choose what to play" disabled><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
-        <button class="chip" id="pDevices" aria-label="Choose where to play" disabled><svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><circle cx="12" cy="14" r="4"/><line x1="12" y1="6" x2="12.01" y2="6"/></svg></button>
+      <div class="np-foot">
+        <div class="np-next" id="pNextUp"></div>
+        <button class="pill" id="pLibrary" disabled><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span>Browse</span></button>
+        <button class="pill" id="pDevices" disabled><svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><circle cx="12" cy="14" r="4"/><line x1="12" y1="6" x2="12.01" y2="6"/></svg><span id="pDeviceName">Speakers</span></button>
       </div>
     </div>
   </section>
@@ -405,8 +430,8 @@
       $('date').innerHTML = '<b>' + dp.weekday + '</b>, ' + dp.day + ' ' + dp.month;
       $('nightTime').innerHTML = $('time').innerHTML;
       $('nightDate').innerHTML = $('date').innerHTML;
-      $('miniTime').textContent = parts.hour + ':' + parts.minute + (hour12 && parts.dayPeriod ? ' ' + parts.dayPeriod : '');
-      $('miniDate').textContent = dp.weekday.slice(0, 3) + ' ' + dp.day + ' ' + dp.month.slice(0, 3);
+      $('npTime').innerHTML = $('time').innerHTML;
+      $('npDate').innerHTML = $('date').innerHTML;
     }
     applyNight(d);
     $('stale').hidden = !lastOk || Date.now() - lastOk < 5 * 60 * 1000;
@@ -457,10 +482,17 @@
     });
     $('strip').innerHTML = html;
 
-    // While music plays: the same in one corner.
-    $('miniIcon').innerHTML = icon(w.code, w.is_day);
-    $('miniTemp').textContent = deg(w.temp);
-    $('miniRain').textContent = renderRain(w.rain || []) || TEXT[w.code] || '';
+    // While music plays: the same, more compact, beside the player.
+    $('npIcon').innerHTML = $('nowIcon').innerHTML;
+    $('npTemp').textContent = deg(w.temp);
+    $('npDesc').textContent = TEXT[w.code] || '';
+    $('npMeta').textContent = 'Feels ' + deg(w.feels) +
+      (today ? ' · ↑' + deg(today.max) + ' ↓' + deg(today.min) : '');
+    $('npStrip').innerHTML = html;
+    var rain = renderRain(w.rain || []);
+    $('npRain').textContent = rain ? (rain.indexOf(' now') > 0 ? rain : rain.replace(' around', ' likely around'))
+      : (w.rain && w.rain.length ? 'No rain in the next 12 hours' : '');
+    $('npRain').classList.toggle('wet', !!rain);
   }
 
   // Draws the rain hours; returns a short line for the corner, or '' when dry.
@@ -650,8 +682,9 @@
     $('pRepeat').classList.toggle('single', !!(active && p.repeat === 'track'));
     $('pLike').disabled = !active || p.liked == null;
     $('pLike').classList.toggle('on', !!(active && p.liked));
-    $('pNextUp').textContent = active && p.next
-      ? 'Next: ' + p.next.title + (p.next.artist ? ' · ' + p.next.artist : '') : '';
+    $('pNextUp').innerHTML = active && p.next
+      ? 'Up next<b>' + esc(p.next.title) + (p.next.artist ? ' · ' + esc(p.next.artist) : '') + '</b>' : '';
+    $('pDeviceName').textContent = (active && p.device) || 'Speakers';
 
     drawProgress();
   }
