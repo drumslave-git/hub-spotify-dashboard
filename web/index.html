@@ -81,6 +81,16 @@
   .cell .lo { color: var(--muted); margin-left: 0.4em; }
   .sep { width: 1px; background: var(--line); margin: 0 0.3vw; }
 
+  /* Rain in the next 12 hours: one bar per hour, as tall as it is likely. */
+  .rain { padding: 0 0.4vw; }
+  .rain-text { font-size: 2.9vh; color: var(--muted); white-space: nowrap; }
+  .rain-text b { color: var(--cool); font-weight: 400; }
+  .rain-bars { margin-top: 1vh; height: 4.6vh; display: flex; align-items: flex-end; gap: 0.5vw; }
+  .rain-bars i { flex: 1; min-height: 0.5vh; border-radius: 0.5vh; background: var(--line); }
+  .rain-bars i.wet { background: var(--cool); }
+  .rain-hours { margin-top: 0.5vh; display: flex; font-size: 2.3vh; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .rain-hours span { flex: 1; }
+
   svg.wx { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
   svg.wx .sun { stroke: var(--warm); }
   svg.wx .drop { stroke: var(--cool); }
@@ -89,55 +99,133 @@
 
   /* ------------------------------------------------------ right: media player */
   .player {
+    position: relative; overflow: hidden;
     background: var(--panel);
     border-radius: 3.2vh;
-    padding: 3.2vh 2.4vw 2.4vh;
+    padding: 2.6vh 2vw 2.4vh;
     display: flex; flex-direction: column; justify-content: space-between;
     min-width: 0; min-height: 0;
   }
-  .p-top { display: flex; align-items: center; gap: 2vw; min-width: 0; }
-  .art {
-    width: 33vh; height: 33vh; flex: none;
-    border-radius: 2vh;
-    background: var(--raised) center / cover no-repeat;
+  /* The cover fills the card; a shade keeps the text and buttons readable. */
+  .p-bg {
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+    background: var(--panel) center / cover no-repeat;
     display: flex; align-items: center; justify-content: center;
-    color: var(--muted);
+    color: var(--line);
   }
-  .art svg { width: 11vh; height: 11vh; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
-  .art.has-art svg { display: none; }
-  .idle .art.has-art { opacity: 0.55; }
-  .p-meta { flex: 1; min-width: 0; }
-  .p-title, .p-artist {
+  .p-bg svg { width: 16vh; height: 16vh; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
+  .p-bg.has-art svg { display: none; }
+  .p-bg.has-art::after {
+    content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+    background: linear-gradient(to bottom,
+      rgba(11,13,16,0.86) 0%, rgba(11,13,16,0.55) 24%, rgba(11,13,16,0.18) 40%,
+      rgba(11,13,16,0.30) 52%, rgba(11,13,16,0.82) 70%, rgba(11,13,16,0.94) 100%);
+  }
+  .idle .p-bg.has-art::after { background: rgba(11,13,16,0.78); }
+  .p-head, .p-foot { position: relative; }
+
+  .p-head { display: flex; align-items: flex-start; gap: 1.2vw; min-width: 0; }
+  .p-meta { flex: 1; min-width: 0; text-shadow: 0 1px 6px rgba(0,0,0,0.7); }
+  .p-title, .p-artist, .p-next {
     display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
     overflow-wrap: anywhere;
   }
-  .p-title { font-size: 5.2vh; line-height: 1.16; -webkit-line-clamp: 3; }
-  .p-artist { margin-top: 1.2vh; font-size: 3.7vh; line-height: 1.25; color: var(--muted); -webkit-line-clamp: 2; }
-  .p-note { margin-top: 1.8vh; font-size: 2.9vh; line-height: 1.3; color: var(--muted); }
+  .p-title { font-size: 4.9vh; line-height: 1.16; -webkit-line-clamp: 2; }
+  .p-artist { margin-top: 0.8vh; font-size: 3.5vh; line-height: 1.25; color: #c9cdd3; -webkit-line-clamp: 1; }
+  .p-note { margin-top: 1vh; font-size: 2.8vh; line-height: 1.3; color: #a9aeb6; }
   .p-note.alert { color: var(--warm); }
+  .p-tools { display: flex; gap: 0.8vw; flex: none; }
 
-  .p-progress { display: flex; align-items: center; gap: 1.2vw; font-size: 2.8vh; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .p-next { font-size: 2.8vh; line-height: 1.3; color: #c9cdd3; -webkit-line-clamp: 1; min-height: 3.6vh; text-shadow: 0 1px 6px rgba(0,0,0,0.7); }
+  .p-sub { margin-top: 0.8vh; display: flex; align-items: center; gap: 0.8vw; }
+  .p-sub.off { visibility: hidden; }
+  .grow { flex: 1; }
+
+  /* Small round buttons: tools, shuffle, repeat, like. */
+  .chip {
+    width: 10vh; height: 10vh; flex: none;
+    border: 0; border-radius: 50%;
+    background: rgba(11,13,16,0.5); color: var(--text);
+    display: flex; align-items: center; justify-content: center;
+    -webkit-appearance: none; appearance: none; outline: none;
+  }
+  .chip svg { width: 4.4vh; height: 4.4vh; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .chip:active { background: var(--raised); }
+  .chip.on { color: var(--warm); }
+  .chip.on.fill svg { fill: currentColor; }
+  .chip .one { display: none; }
+  .chip.single .one { display: inline; }
+  .chip[disabled] { opacity: 0.3; }
+
+  .p-progress { margin-top: 0.4vh; display: flex; align-items: center; gap: 1.2vw; font-size: 2.8vh; color: #c9cdd3; font-variant-numeric: tabular-nums; }
   .p-progress.off { visibility: hidden; }
-  .bar { flex: 1; height: 0.9vh; border-radius: 1vh; background: var(--line); overflow: hidden; }
+  /* Taller than the bar it holds, so a finger can hit it. */
+  .seek { flex: 1; height: 6.4vh; display: flex; align-items: center; }
+  .bar { flex: 1; height: 0.9vh; border-radius: 1vh; background: rgba(255,255,255,0.22); overflow: hidden; }
   .bar i { display: block; height: 100%; width: 0; background: var(--text); border-radius: 1vh; }
 
   .p-ctl { display: flex; align-items: center; justify-content: center; gap: 4vw; }
   .btn {
-    width: 16vh; height: 16vh; flex: none;
+    width: 15vh; height: 15vh; flex: none;
     border: 0; border-radius: 50%;
     background: transparent; color: var(--text);
     display: flex; align-items: center; justify-content: center;
     -webkit-appearance: none; appearance: none; outline: none;
   }
-  .btn svg { width: 6.6vh; height: 6.6vh; fill: currentColor; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  .btn.main { width: 21vh; height: 21vh; background: var(--text); color: var(--bg); }
-  .btn.main svg { width: 8vh; height: 8vh; }
+  .btn svg { width: 6.4vh; height: 6.4vh; fill: currentColor; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .btn.main { width: 19vh; height: 19vh; background: var(--text); color: var(--bg); }
+  .btn.main svg { width: 7.4vh; height: 7.4vh; }
   .btn:active { background: var(--raised); }
   /* A press is on its way to Spotify: further presses wait for it. */
   .player.busy .btn { opacity: 0.5; }
   .btn.main:active { background: #c9c6c0; }
   .btn[disabled] { opacity: 0.22; }
 
+  /* A list over the card: what to play, or where to play it. Paged instead
+     of scrolled, so it does not depend on the device's touch scrolling. */
+  .sheet {
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+    background: var(--panel);
+    padding: 2.2vh 1.6vw 1.8vh;
+    display: flex; flex-direction: column;
+  }
+  .sheet[hidden] { display: none; }
+  .sheet-head { display: flex; align-items: center; font-size: 4.2vh; padding-left: 0.6vw; }
+  .sheet-head span { flex: 1; }
+  .sheet-list { flex: 1; min-height: 0; margin-top: 1vh; }
+  .row {
+    height: 12.4vh; width: 100%;
+    display: flex; align-items: center; gap: 1.4vw;
+    padding: 0 0.8vw; border: 0; border-radius: 2vh;
+    background: transparent; color: var(--text); text-align: left;
+    font: inherit; -webkit-appearance: none; appearance: none; outline: none;
+  }
+  .row:active { background: var(--raised); }
+  .row .thumb { width: 9.6vh; height: 9.6vh; flex: none; border-radius: 1.2vh; background: var(--raised) center / cover no-repeat; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+  .row .thumb svg { width: 4.6vh; height: 4.6vh; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .row .words { min-width: 0; flex: 1; }
+  .row .name, .row .sub { display: block; }
+  .row .name { font-size: 3.6vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .sub { margin-top: 0.3vh; font-size: 2.6vh; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row.now .sub { color: var(--warm); }
+  .sheet-empty { padding: 3vh 0.8vw; font-size: 3.2vh; line-height: 1.4; color: var(--muted); }
+  .sheet-foot { display: flex; align-items: center; justify-content: center; gap: 2vw; font-size: 2.8vh; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .sheet-foot.off { visibility: hidden; }
+  .sheet-foot .chip { width: 8.6vh; height: 8.6vh; background: var(--raised); }
+
+  /* ------------------------------------------------- night: a dim clock only */
+  .night-clock {
+    display: none;
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+    background: #000; color: #4a4d52;
+    flex-direction: column; align-items: center; justify-content: center;
+  }
+  .night-clock .time { font-size: 40vh; }
+  .night-clock .time .colon { color: #2e3034; }
+  .night-clock .date { color: #33363a; padding: 0; }
+  .night-clock .date b { color: #4a4d52; }
+  body.night .night-clock { display: flex; }
+  body.night .dash { visibility: hidden; }
 
   .stale { position: fixed; left: 1.2vw; bottom: 0.6vh; font-size: 2.4vh; color: var(--muted); }
   .stale[hidden] { display: none; }
@@ -162,32 +250,65 @@
       </div>
     </div>
 
+    <div class="rain" id="rain" hidden>
+      <div class="rain-text" id="rainText"></div>
+      <div class="rain-bars" id="rainBars"></div>
+      <div class="rain-hours" id="rainHours"></div>
+    </div>
+
     <div class="strip" id="strip"></div>
   </section>
 
   <section class="player idle" id="player">
-    <div class="p-top">
-      <div class="art" id="pArt"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+    <div class="p-bg" id="pArt"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+
+    <div class="p-head">
       <div class="p-meta">
         <div class="p-title" id="pTitle"></div>
         <div class="p-artist" id="pArtist"></div>
         <div class="p-note" id="pNote"></div>
       </div>
+      <div class="p-tools">
+        <button class="chip" id="pDevices" aria-label="Choose where to play" disabled><svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><circle cx="12" cy="14" r="4"/><line x1="12" y1="6" x2="12.01" y2="6"/></svg></button>
+        <button class="chip" id="pLibrary" aria-label="Choose what to play" disabled><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
+      </div>
     </div>
 
-    <div class="p-progress off" id="pProgress">
-      <span id="pPos">0:00</span>
-      <div class="bar"><i id="pFill"></i></div>
-      <span id="pDur">0:00</span>
+    <div class="p-foot">
+      <div class="p-next" id="pNextUp"></div>
+      <div class="p-sub off" id="pSub">
+        <button class="chip" id="pShuffle" aria-label="Shuffle" disabled><svg viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></button>
+        <button class="chip" id="pRepeat" aria-label="Repeat" disabled><svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><path class="one" d="M11 10.5l1.2-1v5"/></svg></button>
+        <span class="grow"></span>
+        <button class="chip fill" id="pLike" aria-label="Like" disabled><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></button>
+      </div>
+      <div class="p-progress off" id="pProgress">
+        <span id="pPos">0:00</span>
+        <div class="seek" id="pSeek"><div class="bar"><i id="pFill"></i></div></div>
+        <span id="pDur">0:00</span>
+      </div>
+      <div class="p-ctl">
+        <button class="btn" id="pPrev" aria-label="Previous" disabled><svg viewBox="0 0 24 24"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg></button>
+        <button class="btn main" id="pToggle" aria-label="Play or pause" disabled><svg viewBox="0 0 24 24" id="pToggleIcon"><polygon points="6 3 20 12 6 21 6 3"/></svg></button>
+        <button class="btn" id="pNext" aria-label="Next" disabled><svg viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg></button>
+      </div>
     </div>
 
-    <div class="p-ctl">
-      <button class="btn" id="pPrev" aria-label="Previous" disabled><svg viewBox="0 0 24 24"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg></button>
-      <button class="btn main" id="pToggle" aria-label="Play or pause" disabled><svg viewBox="0 0 24 24" id="pToggleIcon"><polygon points="6 3 20 12 6 21 6 3"/></svg></button>
-      <button class="btn" id="pNext" aria-label="Next" disabled><svg viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg></button>
+    <div class="sheet" id="sheet" hidden>
+      <div class="sheet-head"><span id="sheetTitle"></span><button class="chip" id="sheetClose" aria-label="Close"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+      <div class="sheet-list" id="sheetList"></div>
+      <div class="sheet-foot off" id="sheetFoot">
+        <button class="chip" id="sheetBack" aria-label="Previous page"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <span id="sheetPage"></span>
+        <button class="chip" id="sheetMore" aria-label="Next page"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
+      </div>
     </div>
   </section>
 </main>
+<div class="night-clock" id="night">
+  <div class="time" id="nightTime"></div>
+  <div class="date" id="nightDate"></div>
+</div>
 <div class="stale" id="stale" hidden>offline</div>
 
 <script>
@@ -265,8 +386,28 @@
       var dp = {};
       new Intl.DateTimeFormat('en-GB', dopts).formatToParts(d).forEach(function (p) { dp[p.type] = p.value; });
       $('date').innerHTML = '<b>' + dp.weekday + '</b>, ' + dp.day + ' ' + dp.month;
+      $('nightTime').innerHTML = $('time').innerHTML;
+      $('nightDate').innerHTML = $('date').innerHTML;
     }
+    applyNight(d);
     $('stale').hidden = !lastOk || Date.now() - lastOk < 5 * 60 * 1000;
+  }
+
+  // ----------------------------------------------------------------- night
+  // Between the set hours the page shows only a dim clock, unless music is
+  // playing. A touch brings the full dashboard back for a minute.
+  var night = null, wakeUntil = 0;
+  function applyNight(d) {
+    var on = params.get('demo') === 'night';
+    if (!on && !params.get('demo') && night && night.from && night.to && night.from !== night.to) {
+      var opts = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+      if (tz) opts.timeZone = tz;
+      var now = new Intl.DateTimeFormat('en-GB', opts).format(d);   // "HH:MM"
+      var inside = night.from < night.to ? (now >= night.from && now < night.to)
+                                         : (now >= night.from || now < night.to);
+      on = inside && Date.now() > wakeUntil && !(player && player.active && player.playing);
+    }
+    document.body.classList.toggle('night', on);
   }
 
   // -------------------------------------------------------------- weather
@@ -294,6 +435,30 @@
         '<span class="lo">' + deg(d.min) + '</span></span></div>';
     });
     $('strip').innerHTML = html;
+    renderRain(w.rain || []);
+  }
+
+  function renderRain(hours) {
+    $('rain').hidden = !hours.length;
+    if (!hours.length) return;
+    var SNOW = [71, 73, 75, 77, 85, 86];
+    var likely = null, possible = null, bars = '', labels = '';
+    hours.forEach(function (h, i) {
+      var wet = h.chance >= 30 || h.mm >= 0.2;
+      if (!likely && h.chance >= 55) likely = h;
+      if (!possible || h.chance > possible.chance) possible = h;
+      bars += '<i' + (wet ? ' class="wet"' : '') + ' style="height:' + Math.max(8, h.chance) + '%"></i>';
+      if (i % 3 === 0) labels += '<span>' + h.time.slice(11, 13) + '</span>';
+    });
+    function what(h) { return SNOW.indexOf(h.code) >= 0 ? 'Snow' : 'Rain'; }
+    var first = hours[0];
+    $('rainText').innerHTML =
+      likely && likely === first ? '<b>' + what(likely) + ' now</b> · ' + likely.chance + '%'
+      : likely ? '<b>' + what(likely) + ' likely around ' + likely.time.slice(11, 16) + '</b>'
+      : possible && possible.chance >= 25 ? what(possible) + ' possible around ' + possible.time.slice(11, 16) + ' · ' + possible.chance + '%'
+      : 'No rain in the next 12 hours';
+    $('rainBars').innerHTML = bars;
+    $('rainHours').innerHTML = labels;
   }
 
   function refresh() {
@@ -304,7 +469,7 @@
         var rtt = Date.now() - sent;
         offset = s.now + rtt / 2 - Date.now();
         if (Math.abs(offset) < 2000) offset = 0;   // device clock is fine, don't jitter
-        tz = s.timezone; hour12 = !!s.hour12;
+        tz = s.timezone; hour12 = !!s.hour12; night = s.night;
         if (version && s.version !== version) { location.reload(); return; }
         version = s.version;
         lastOk = Date.now();
@@ -378,29 +543,67 @@
     $('pToggle').disabled = !ready || (!active && !p.local_ready);
     $('pPrev').disabled = !active;
     $('pNext').disabled = !active;
+    $('pLibrary').disabled = !ready;
+    $('pDevices').disabled = !ready;
+
+    $('pSub').classList.toggle('off', !active);
+    $('pShuffle').disabled = $('pRepeat').disabled = !active;
+    $('pShuffle').classList.toggle('on', !!(active && p.shuffle));
+    $('pRepeat').classList.toggle('on', !!(active && p.repeat && p.repeat !== 'off'));
+    $('pRepeat').classList.toggle('single', !!(active && p.repeat === 'track'));
+    $('pLike').disabled = !active || p.liked == null;
+    $('pLike').classList.toggle('on', !!(active && p.liked));
+    $('pNextUp').textContent = active && p.next
+      ? 'Next: ' + p.next.title + (p.next.artist ? ' · ' + p.next.artist : '') : '';
 
     $('pProgress').classList.toggle('off', !active || !p.duration_ms);
     drawProgress();
   }
 
+  function position(p) {
+    var pos = p.progress_ms + (p.playing ? Date.now() + offset - p.at : 0);
+    return Math.max(0, Math.min(p.duration_ms, pos));
+  }
+
   function drawProgress() {
     var p = player;
     if (!p || !p.active || !p.duration_ms) return;
-    var pos = p.progress_ms + (p.playing ? Date.now() + offset - p.at : 0);
-    pos = Math.max(0, Math.min(p.duration_ms, pos));
+    var pos = position(p);
     $('pPos').textContent = clock(pos);
     $('pDur').textContent = clock(p.duration_ms);
     $('pFill').style.width = (100 * pos / p.duration_ms) + '%';
   }
 
+  var COVER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23e9a05c'/%3E%3Cstop offset='.5' stop-color='%23b8456b'/%3E%3Cstop offset='1' stop-color='%232a2f6b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='300' height='300' fill='url(%23g)'/%3E%3Ccircle cx='210' cy='95' r='60' fill='%23fff' fill-opacity='.55'/%3E%3C/svg%3E";
   var DEMO = {
     playing: { configured: true, connected: true, active: true, playing: true, title: 'Never Catch Me (feat. Kendrick Lamar)',
-      artist: 'Flying Lotus, Kendrick Lamar', device: 'Kitchen display',
-      progress_ms: 83000, duration_ms: 234000, at: Date.now(), art: null },
+      artist: 'Flying Lotus, Kendrick Lamar', device: 'Dashboard', on_dashboard: true, shuffle: true, repeat: 'track', liked: true,
+      next: { title: 'Dead Man\'s Tetris', artist: 'Flying Lotus, Captain Murphy, Snoop Dogg' },
+      progress_ms: 83000, duration_ms: 234000, at: Date.now(), art: COVER },
+    plain: { configured: true, connected: true, active: true, playing: false, title: 'Weightless', artist: 'Marconi Union',
+      device: 'Phone', shuffle: false, repeat: 'off', liked: false, next: null,
+      progress_ms: 12000, duration_ms: 480000, at: Date.now(), art: null },
     idle: { configured: true, connected: true, active: false, playing: false, local_ready: true,
-      last: { title: 'Quiet', artist: 'Kuoga.', art: null } },
+      last: { title: 'Quiet', artist: 'Kuoga.', art: COVER } },
     setup: { configured: false, connected: false }
   };
+  DEMO.night = DEMO.idle;
+  var DEMO_LIBRARY = { recent: [
+      { uri: 'a1', name: 'You\'re Dead!', art: COVER, kind: 'Album' },
+      { uri: 'p1', name: 'Evening cooking', art: null, kind: 'Playlist' }
+    ], playlists: [
+      { uri: 'p1', name: 'Evening cooking', art: null, kind: 'Playlist' },
+      { uri: 'p2', name: 'Discover Weekly', art: COVER, kind: 'Playlist' },
+      { uri: 'p3', name: 'A playlist with a very long name that will not fit', art: null, kind: 'Playlist' },
+      { uri: 'p4', name: 'Focus', art: null, kind: 'Playlist' },
+      { uri: 'p5', name: 'Running', art: COVER, kind: 'Playlist' },
+      { uri: 'p6', name: 'Old favourites', art: null, kind: 'Playlist' }
+    ] };
+  var DEMO_DEVICES = { devices: [
+      { id: 'd1', name: 'Dashboard', type: 'computer', active: true, here: true },
+      { id: 'd2', name: 'Phone', type: 'smartphone', active: false, here: false },
+      { id: 'd3', name: 'Living room speaker', type: 'speaker', active: false, here: false }
+    ] };
 
   function pollPlayer() {
     if (params.get('demo')) { if (!player) renderPlayer(DEMO[params.get('demo')] || DEMO.setup); return; }
@@ -421,40 +624,145 @@
     if (on) busyTimer = setTimeout(function () { setBusy(false); }, 6000);
   }
 
-  function command(action) {
+  var QUICK = { like: 1, shuffle: 1, repeat: 1, seek: 1 };   // settle at once, no need to wait in line
+
+  function command(action, value) {
     if (!player || !player.connected) return;
-    if (busy) return;
+    if (busy && !QUICK[action]) return;
     var wasPlaying = player.active && player.playing;
     // Show the result straight away; the next poll confirms the real state.
     if (action === 'toggle' && player.active) {
-      if (player.playing) player.progress_ms += Date.now() + offset - player.at;
+      if (player.playing) player.progress_ms = position(player);
       player.at = Date.now() + offset;
       player.playing = !player.playing;
     }
+    if (action === 'like') player.liked = !player.liked;
+    if (action === 'shuffle') player.shuffle = !player.shuffle;
+    if (action === 'repeat') player.repeat = { off: 'context', context: 'track', track: 'off' }[player.repeat] || 'context';
+    if (action === 'seek') { player.progress_ms = value; player.at = Date.now() + offset; }
     renderPlayer(player);
-    if (action === 'toggle' && !wasPlaying) note('Starting…');
+    if ((action === 'toggle' && !wasPlaying) || action === 'play') note('Starting…');
+    if (action === 'device') note('Moving the music…');
     holdUntil = Date.now() + 2500;
     if (params.get('demo')) return;
-    setBusy(true);
+    if (!QUICK[action]) setBusy(true);
 
     // Being inside a tap is what lets the browser start sound.
     unlockSound();
-    // Pausing or skipping music that plays here: cut the queued sound at once
-    // instead of letting the last half second trail on.
-    if (ctx && player.on_dashboard && (action !== 'toggle' || wasPlaying)) cutSound(600);
-    fetch('/api/player', { method: 'POST', body: JSON.stringify({ action: action }) })
+    // Pausing, skipping or jumping in music that plays here: cut the queued
+    // sound at once instead of letting the last half second trail on.
+    var cuts = action === 'next' || action === 'prev' || action === 'seek' || action === 'play' ||
+               action === 'device' || (action === 'toggle' && wasPlaying);
+    if (ctx && player.on_dashboard && cuts) cutSound(600);
+    fetch('/api/player', { method: 'POST', body: JSON.stringify({ action: action, value: value }) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (!res.ok) { holdUntil = 0; pollPlayer(); note(res.message || 'That did not work.', true); }
       })
       .catch(function () { holdUntil = 0; note('The dashboard server is not responding.', true); })
-      .then(function () { setBusy(false); });
+      .then(function () { if (!QUICK[action]) setBusy(false); });
     setTimeout(pollPlayer, 2600);
   }
 
   $('pToggle').addEventListener('click', function () { command('toggle'); });
   $('pPrev').addEventListener('click', function () { command('prev'); });
   $('pNext').addEventListener('click', function () { command('next'); });
+  $('pLike').addEventListener('click', function () { command('like'); });
+  $('pShuffle').addEventListener('click', function () { command('shuffle'); });
+  $('pRepeat').addEventListener('click', function () { command('repeat'); });
+  $('pSeek').addEventListener('click', function (e) {
+    if (!player || !player.active || !player.duration_ms) return;
+    var box = $('pSeek').getBoundingClientRect();
+    var part = Math.max(0, Math.min(1, (e.clientX - box.left) / box.width));
+    command('seek', Math.round(part * player.duration_ms));
+  });
+
+  // ------------------------------------------------- what to play, and where
+  var NOTE_ICON = '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
+  var DEVICE_ICON = '<svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><circle cx="12" cy="14" r="4"/><line x1="12" y1="6" x2="12.01" y2="6"/></svg>';
+  var PER_PAGE = 5;
+  var sheet = { kind: null, rows: [], page: 0, empty: '' }, sheetTimer;
+
+  function esc(text) {
+    return String(text == null ? '' : text).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  function drawSheet() {
+    var pages = Math.max(1, Math.ceil(sheet.rows.length / PER_PAGE));
+    sheet.page = Math.max(0, Math.min(pages - 1, sheet.page));
+    var html = '';
+    sheet.rows.slice(sheet.page * PER_PAGE, (sheet.page + 1) * PER_PAGE).forEach(function (row, i) {
+      var art = row.art ? ' style="background-image:url(&quot;' + esc(row.art) + '&quot;)"' : '';
+      html += '<button class="row' + (row.now ? ' now' : '') + '" data-i="' + (sheet.page * PER_PAGE + i) + '">' +
+        '<span class="thumb"' + art + '>' + (row.art ? '' : row.icon) + '</span>' +
+        '<span class="words"><span class="name">' + esc(row.name) + '</span>' +
+        '<span class="sub">' + esc(row.sub) + '</span></span></button>';
+    });
+    $('sheetList').innerHTML = html || '<div class="sheet-empty">' + esc(sheet.empty) + '</div>';
+    $('sheetFoot').classList.toggle('off', pages < 2);
+    $('sheetPage').textContent = (sheet.page + 1) + ' / ' + pages;
+    // Left alone, the list goes away by itself.
+    clearTimeout(sheetTimer);
+    sheetTimer = setTimeout(closeSheet, 40 * 1000);
+  }
+
+  function openSheet(kind) {
+    sheet = { kind: kind, rows: [], page: 0, empty: 'Loading…' };
+    $('sheetTitle').textContent = kind === 'devices' ? 'Play on' : 'Play something';
+    $('sheet').hidden = false;
+    drawSheet();
+    var demo = params.get('demo');
+    var load = demo ? Promise.resolve(kind === 'devices' ? DEMO_DEVICES : DEMO_LIBRARY)
+      : fetch(kind === 'devices' ? '/api/devices' : '/api/library', { cache: 'no-store' }).then(function (r) { return r.json(); });
+    load.then(function (data) {
+      if (sheet.kind !== kind) return;
+      if (kind === 'devices') {
+        sheet.rows = (data.devices || []).map(function (d) {
+          return { value: d.id, name: d.name, icon: DEVICE_ICON, now: d.active,
+                   sub: (d.active ? 'Playing here now' : d.here ? 'This display' : d.type || 'Device') };
+        });
+        sheet.empty = 'Spotify sees no devices right now.';
+      } else {
+        var seen = {};
+        sheet.rows = (data.recent || []).map(function (e) {
+          seen[e.uri] = 1;
+          return { value: e.uri, name: e.name, art: e.art, icon: NOTE_ICON, sub: e.kind + ' · played recently' };
+        }).concat((data.playlists || []).filter(function (e) { return !seen[e.uri]; }).map(function (e) {
+          return { value: e.uri, name: e.name, art: e.art, icon: NOTE_ICON, sub: e.kind };
+        }));
+        sheet.empty = 'No playlists found.';
+        // Signed in before the dashboard asked for playlists and likes.
+        if (player && player.needs_login) {
+          sheet.rows.unshift({ value: null, name: 'Sign in again to see your playlists', icon: NOTE_ICON,
+                               sub: 'Open ' + location.host + '/api/spotify/login' });
+        }
+      }
+      drawSheet();
+    }).catch(function () { sheet.empty = 'The dashboard server is not responding.'; drawSheet(); });
+  }
+
+  function closeSheet() {
+    clearTimeout(sheetTimer);
+    sheet.kind = null;
+    $('sheet').hidden = true;
+  }
+
+  $('pLibrary').addEventListener('click', function () { openSheet('library'); });
+  $('pDevices').addEventListener('click', function () { openSheet('devices'); });
+  $('sheetClose').addEventListener('click', closeSheet);
+  $('sheetBack').addEventListener('click', function () { sheet.page--; drawSheet(); });
+  $('sheetMore').addEventListener('click', function () { sheet.page++; drawSheet(); });
+  $('sheetList').addEventListener('click', function (e) {
+    var el = e.target.closest ? e.target.closest('.row') : null;
+    var row = el && sheet.rows[+el.getAttribute('data-i')];
+    if (!row) return;
+    var kind = sheet.kind;
+    if (row.value == null) return;   // a hint, not a choice
+    closeSheet();
+    command(kind === 'devices' ? 'device' : 'play', row.value);
+  });
 
   // ------------------------------------------------- sound on this device
   // The server runs the Spotify player; this page plays its sound. The audio
@@ -657,6 +965,9 @@
 
   document.addEventListener('pointerdown', function () {
     touches++;
+    // Night mode: any touch brings the dashboard back for a minute.
+    wakeUntil = Date.now() + 60 * 1000;
+    applyNight(new Date(Date.now() + offset));
     // Any touch unlocks sound for the in-page player.
     unlockSound();
   });

@@ -53,6 +53,11 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(cfg["spotify"]["player_name"], "Dashboard")
         self.assertEqual(cfg["cast_app_id"], "ABCD1234")
         self.assertFalse(cfg["voice_takeover"])
+        self.assertEqual(cfg["night"], {"from": "23:00", "to": "07:00"})  # the default hours
+
+    def test_night_hours_can_be_set_or_switched_off(self):
+        self.assertEqual(self.load(NIGHT_FROM="22:30", NIGHT_TO="06:00")["night"], {"from": "22:30", "to": "06:00"})
+        self.assertEqual(self.load(NIGHT_FROM="off")["night"], {"from": "", "to": ""})
 
     def test_spotify_redirect_follows_an_https_address(self):
         cfg = self.load()

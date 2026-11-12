@@ -12,6 +12,7 @@ import logging
 import mimetypes
 import os
 import queue
+import re
 import socket
 import struct
 import sys
@@ -73,6 +74,14 @@ def load_config() -> dict:
     # Spotify device to start music on when nothing is playing and the page's
     # own player is not available.
     sp["device"] = env.get("SPOTIFY_DEVICE") or sp.get("device") or ""
+    # Night mode: between these hours ("HH:MM") the page shows only a dim
+    # clock while nothing plays. "off" (or equal hours) switches it off.
+    night_from = (env.get("NIGHT_FROM") or cfg.get("night_from") or "23:00").strip()
+    night_to = (env.get("NIGHT_TO") or cfg.get("night_to") or "07:00").strip()
+    hhmm = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
+    if not (hhmm.fullmatch(night_from) and hhmm.fullmatch(night_to)):
+        night_from = night_to = ""   # "off", or anything that is not a time
+    cfg["night"] = {"from": night_from, "to": night_to}
     # Name the dashboard's own player shows up as in Spotify.
     sp["player_name"] = env.get("SPOTIFY_PLAYER_NAME") or sp.get("player_name") or "Dashboard"
     cfg["spotify"] = sp
@@ -124,7 +133,7 @@ class Weather:
                 "longitude": w["longitude"],
                 "current": "temperature_2m,apparent_temperature,weather_code,"
                 "is_day,wind_speed_10m,relative_humidity_2m",
-                "hourly": "temperature_2m,weather_code,precipitation_probability,is_day",
+                "hourly": "temperature_2m,weather_code,precipitation_probability,precipitation,is_day",
                 "daily": "weather_code,temperature_2m_max,temperature_2m_min,"
                 "precipitation_probability_max",
                 "timezone": CONFIG["timezone"],
@@ -151,6 +160,16 @@ class Weather:
             }
             for i in range(start, min(start + 12, len(hourly["time"])), 3)
         ]
+        # Chance and amount of rain or snow for each of the next 12 hours.
+        rain = [
+            {
+                "time": hourly["time"][i],
+                "chance": hourly["precipitation_probability"][i] or 0,
+                "mm": hourly["precipitation"][i] or 0,
+                "code": hourly["weather_code"][i],
+            }
+            for i in range(start, min(start + 12, len(hourly["time"])))
+        ]
         daily = raw["daily"]
         days = [
             {
@@ -171,6 +190,7 @@ class Weather:
             "wind": cur["wind_speed_10m"],
             "humidity": cur["relative_humidity_2m"],
             "hours": hours,
+            "rain": rain,
             "days": days,
             "fetched": int(time.time()),
         }
@@ -381,6 +401,7 @@ class Handler(BaseHTTPRequestHandler):
                     "now": int(time.time() * 1000),
                     "timezone": CONFIG["timezone"],
                     "hour12": CONFIG.get("hour12", False),
+                    "night": CONFIG["night"],
                     "version": page_version(),
                     "weather": weather.get(),
                 }
@@ -389,6 +410,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": True})
         elif path == "/api/player":
             self._json({**spotify.state(), "local": local.info()})
+        elif path == "/api/library":
+            self._json(spotify.library() if spotify.connected else {"recent": [], "playlists": []})
+        elif path == "/api/devices":
+            self._json({"devices": spotify.devices() if spotify.connected else []})
         elif path in ("/api/audio", "/api/audio.wav"):
             self._audio(wav=path.endswith(".wav"))
         elif path == "/api/spotify/token":
@@ -444,6 +469,7 @@ class Handler(BaseHTTPRequestHandler):
                     },
                     "beat": keeper.beat,
                     "player": spotify.state(),
+                    "spotify_errors": list(spotify.errors),
                     "local": local.debug(),
                     "events": keeper.events,
                 }
@@ -487,7 +513,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 req = json.loads(raw)
                 action = str(req.get("action"))
-                ok, message = spotify.command(action)
+                ok, message = spotify.command(action, req.get("value"))
             except Exception as err:
                 log.warning("player command failed: %r", err)
                 message = "Something went wrong."

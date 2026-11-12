@@ -8,6 +8,7 @@ token is kept in the data directory.
 from __future__ import annotations
 
 import base64
+import collections
 import hashlib
 import json
 import logging
@@ -28,7 +29,10 @@ SCOPES = (
     # The first three are what Spotify's web player needs to play music.
     "streaming user-read-email user-read-private "
     "user-read-playback-state user-modify-playback-state "
-    "user-read-currently-playing user-read-recently-played"
+    "user-read-currently-playing user-read-recently-played "
+    # Likes, and the list of playlists to start music from.
+    "user-library-read user-library-modify "
+    "playlist-read-private playlist-read-collaborative"
 )
 
 
@@ -67,11 +71,22 @@ class Spotify:
         self._local_at = 0.0
         self._takeover_until = 0.0
         self._handoff: dict | None = None
+        # What Spotify granted at sign-in (None until a token response says).
+        self._scope: set[str] | None = None
+        # Per-track extras: is it liked, and what comes next.
+        self._extras: dict = {}
+        self._library: dict | None = None
+        self._library_at = 0.0
+        # Recent refusals from Spotify, for /api/debug.
+        self.errors: collections.deque = collections.deque(maxlen=12)
         self.error = ""
         # Set when the sign-in could not be written to disk.
         self.store_error = ""
         try:
-            self._refresh = json.loads(store.read_text(encoding="utf-8")).get("refresh_token")
+            saved = json.loads(store.read_text(encoding="utf-8"))
+            self._refresh = saved.get("refresh_token")
+            if saved.get("scope"):
+                self._scope = set(saved["scope"].split())
         except (OSError, ValueError):
             pass
 
@@ -131,8 +146,12 @@ class Spotify:
             self._refresh = body["refresh_token"]
             self._access = body["access_token"]
             self._expires = time.time() + body.get("expires_in", 3600)
+            if body.get("scope"):
+                self._scope = set(body["scope"].split())
             self.error = ""
             self._state = None
+            self._library = None
+            self._extras = {}
             self._save()
         log.info("spotify: signed in")
         return None
@@ -141,7 +160,8 @@ class Spotify:
         """Keep the sign-in across restarts. A failure must not undo the sign-in."""
         try:
             self._store.parent.mkdir(parents=True, exist_ok=True)
-            self._store.write_text(json.dumps({"refresh_token": self._refresh}), encoding="utf-8")
+            saved = {"refresh_token": self._refresh, "scope": " ".join(sorted(self._scope or []))}
+            self._store.write_text(json.dumps(saved), encoding="utf-8")
             self.store_error = ""
         except OSError as err:
             self.store_error = f"{self._store}: {err.strerror or err}"
@@ -172,8 +192,13 @@ class Spotify:
                 return None
             self._access = body["access_token"]
             self._expires = time.time() + body.get("expires_in", 3600)
+            scope = set(body["scope"].split()) if body.get("scope") else self._scope
+            changed = scope != self._scope
+            self._scope = scope
             if body.get("refresh_token") and body["refresh_token"] != self._refresh:
                 self._refresh = body["refresh_token"]
+                changed = True
+            if changed:
                 self._save()
             self.error = ""
             return self._access
@@ -203,7 +228,16 @@ class Spotify:
             wait = int(hdrs.get("Retry-After", "5") or 5)
             self._backoff_until = time.time() + wait
             log.warning("spotify: rate limited, backing off %ss", wait)
+        if status >= 400:
+            message = ((payload or {}).get("error") or {}) if isinstance(payload, dict) else {}
+            message = message.get("message") if isinstance(message, dict) else message
+            self.errors.append(f"{time.strftime('%H:%M:%S')} {method} {path} -> {status} {message or ''}".strip())
         return status, payload
+
+    @property
+    def needs_login(self) -> bool:
+        """Signed in before the dashboard asked for everything it uses now."""
+        return self.connected and self._scope is not None and not set(SCOPES.split()) <= self._scope
 
     @staticmethod
     def _describe(item: dict | None) -> dict:
@@ -234,7 +268,10 @@ class Spotify:
                 "device_id": device.get("id"),
                 "progress_ms": p.get("progress_ms") or 0,
                 "context_uri": (p.get("context") or {}).get("uri"),
+                "shuffle": bool(p.get("shuffle_state")),
+                "repeat": p.get("repeat_state") or "off",
                 "at": int(time.time() * 1000),
+                **self._track_extras(p["item"].get("uri")),
             }
         if status in (200, 202, 204):
             return {"active": False, "playing": False, "last": self._last_played()}
@@ -274,6 +311,7 @@ class Spotify:
             "connected": self.connected,
             "error": self.error,
             "local_ready": self.local_ready,
+            "needs_login": self.needs_login,
         }
         if not self.connected:
             return base
@@ -288,6 +326,76 @@ class Spotify:
                 **self._state,
                 "on_dashboard": bool(device_id) and device_id == self._local_id,
             }
+
+    # ------------------------------------------------------ likes and up next
+
+    def _track_extras(self, uri: str | None) -> dict:
+        """Whether the playing track is liked and what comes after it. Asked
+        once per track, and again now and then because the queue changes."""
+        if not uri:
+            return {"liked": None, "next": None}
+        cached = self._extras
+        if cached.get("uri") != uri or time.time() - cached.get("at", 0) > 45:
+            liked = cached.get("liked") if cached.get("uri") == uri else None
+            status, p = self._api("GET", "/me/library/contains", {"uris": uri})
+            if status == 200 and isinstance(p, list) and p:
+                liked = bool(p[0])
+            upcoming = None
+            status, p = self._api("GET", "/me/player/queue")
+            if status == 200 and p and p.get("queue"):
+                following = self._describe(p["queue"][0])
+                upcoming = {"title": following["title"], "artist": following["artist"]}
+            self._extras = cached = {"uri": uri, "at": time.time(), "liked": liked, "next": upcoming}
+        return {"liked": cached.get("liked"), "next": cached.get("next")}
+
+    # ------------------------------------------------ what there is to play
+
+    def library(self) -> dict:
+        """The user's playlists and the albums and playlists played lately, to
+        start music from the dashboard."""
+        with self._lock:
+            if self._library is not None and time.time() - self._library_at < 300:
+                return self._library
+            def art(images):
+                images = images or []
+                return (images[1] if len(images) > 1 else images[0])["url"] if images else None
+
+            playlists = []
+            status, p = self._api("GET", "/me/playlists", {"limit": 50})
+            for item in ((p or {}).get("items") or []) if status == 200 else []:
+                if item and item.get("uri"):
+                    playlists.append({"uri": item["uri"], "name": item.get("name") or "Playlist",
+                                      "art": art(item.get("images")), "kind": "Playlist"})
+            by_uri = {entry["uri"]: entry for entry in playlists}
+
+            recent, seen = [], set()
+            status, p = self._api("GET", "/me/player/recently-played", {"limit": 50})
+            for item in ((p or {}).get("items") or []) if status == 200 else []:
+                context = (item.get("context") or {}).get("uri")
+                album = (item.get("track") or {}).get("album") or {}
+                if context and context in by_uri:
+                    entry = by_uri[context]
+                elif album.get("uri") and (not context or context == album["uri"]):
+                    entry = {"uri": album["uri"], "name": album.get("name") or "Album",
+                             "art": art(album.get("images")), "kind": "Album"}
+                else:
+                    continue  # a playlist of someone else's: no name to show for it
+                if entry["uri"] not in seen:
+                    seen.add(entry["uri"])
+                    recent.append(entry)
+            self._library = {"recent": recent[:8], "playlists": playlists}
+            self._library_at = time.time()
+            return self._library
+
+    def devices(self) -> list[dict]:
+        """Where Spotify can play right now, the dashboard's own player first."""
+        status, p = self._api("GET", "/me/player/devices")
+        found = [
+            {"id": d["id"], "name": d.get("name") or "Device", "type": (d.get("type") or "").lower(),
+             "active": bool(d.get("is_active")), "here": d["id"] == self._local_id}
+            for d in ((p or {}).get("devices") or []) if status == 200 and d.get("id") and not d.get("is_restricted")
+        ]
+        return sorted(found, key=lambda d: (not d["here"], d["name"].lower()))
 
     # ------------------------------------------------ the dashboard's player
 
@@ -412,11 +520,56 @@ class Spotify:
             return "Spotify is rate limiting; try again in a moment."
         return message or f"Spotify error {status}"
 
-    def command(self, action: str) -> tuple[bool, str]:
+    def _play_context(self, current: dict, uri: str) -> tuple[bool, str]:
+        """Start a playlist or album: where music is playing now, otherwise on
+        the dashboard itself."""
+        if current.get("active") and current.get("device_id"):
+            device_id = current["device_id"]
+        else:
+            device = self._pick_device()
+            if device is None:
+                return False, "The dashboard can't play music by itself yet."
+            device_id = device["id"]
+        status, payload = self._api("PUT", "/me/player/play", {"device_id": device_id}, {"context_uri": uri})
+        return (True, "") if status in (200, 202, 204) else (False, self._reason(status, payload))
+
+    def command(self, action: str, value=None) -> tuple[bool, str]:
         if not self.connected:
             return False, "Spotify is not connected."
         with self._lock:
             current = self._fetch_state()
+            simple = None  # (method, path, query, body) for the one-call actions
+            if action == "like":
+                if not current.get("uri"):
+                    return False, "Nothing is playing."
+                liked = not current.get("liked")
+                simple = ("PUT" if liked else "DELETE", "/me/library", {"uris": current["uri"]}, None)
+            elif action == "shuffle":
+                simple = ("PUT", "/me/player/shuffle", {"state": "false" if current.get("shuffle") else "true"}, None)
+            elif action == "repeat":
+                following = {"off": "context", "context": "track", "track": "off"}
+                simple = ("PUT", "/me/player/repeat", {"state": following.get(current.get("repeat"), "context")}, None)
+            elif action == "seek":
+                simple = ("PUT", "/me/player/seek", {"position_ms": max(0, int(value or 0))}, None)
+            elif action == "device":
+                # Keep playing if it was; with nothing playing, picking a
+                # device means "play there".
+                keep_going = bool(current.get("playing")) or not current.get("active")
+                simple = ("PUT", "/me/player", None, {"device_ids": [str(value)], "play": keep_going})
+            if simple:
+                status, payload = self._api(*simple)
+                ok = status in (200, 202, 204)
+                if ok and action == "like":
+                    self._extras = {**self._extras, "uri": current["uri"], "liked": simple[0] == "PUT"}
+                elif ok:
+                    self._extras = {}  # the queue may have changed
+                self._state_at = 0
+                return (True, "") if ok else (False, self._reason(status, payload))
+            if action == "play":
+                result = self._play_context(current, str(value or ""))
+                self._extras = {}
+                self._state_at = 0
+                return result
             if action == "toggle":
                 if current.get("active") and current.get("playing"):
                     status, payload = self._api("PUT", "/me/player/pause")

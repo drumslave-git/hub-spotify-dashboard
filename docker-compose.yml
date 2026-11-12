@@ -43,6 +43,11 @@ services:
 
       PORT: ${PORT:-8765}
       HOUR12: ${HOUR12:-false}
+      # Night mode: between these hours the Hub shows only a dim clock while
+      # nothing plays (a touch brings the dashboard back). NIGHT_FROM=off
+      # switches it off.
+      NIGHT_FROM: ${NIGHT_FROM:-23:00}
+      NIGHT_TO: ${NIGHT_TO:-07:00}
 
       # Where Spotify sends the browser after sign-in. Empty = PUBLIC_URL +
       # api/spotify/callback, which is what to enter in the Spotify app.

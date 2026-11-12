@@ -1,7 +1,8 @@
 # Nest Hub dashboard
 
 Keeps a custom page on a Google Nest Hub instead of its ambient screen:
-time, date and weather on the left, a Spotify player on the right.
+time, date, weather and the rain forecast for the next hours on the left, a
+Spotify player on the right.
 
 - `server.py` serves the page, fetches weather (Open-Meteo), and runs the
   keeper: whenever the Hub is idle it casts the page, and re-casts if the page
@@ -27,6 +28,10 @@ in Chrome inside the container instead. It appears in Spotify as a device
 streamed to the page, which plays it through the Hub's speaker.
 
 - The play button resumes your last Spotify session on that device.
+- The list button offers your playlists and what you played lately; the
+  speaker button moves the music to any device Spotify offers.
+- Like, shuffle, repeat, tapping the progress bar to jump, and the next track
+  are on the card; the album cover fills it while music plays.
 - You can also pick "Dashboard" as the device in any Spotify app.
 - If Spotify's own app starts on the Hub (for example after "Hey Google,
   play..."), the service notes the track and position, closes that app, re-casts
@@ -57,6 +62,9 @@ stream).
    derived from `PUBLIC_URL`; set `SPOTIFY_REDIRECT_URI` only if it differs.
 3. Open `https://hub.example.com/api/spotify/login` in a browser and sign in.
    The sign-in is saved in `data/spotify.json`.
+
+When an update needs more permissions from Spotify (likes and playlists came
+with 0.3.0), the playlist list shows a "sign in again" line; repeat step 3.
 
 Spotify only allows `https://` redirect addresses, or `http://127.0.0.1` (the
 default when the dashboard's address is plain http, for running locally).
@@ -126,6 +134,7 @@ Optional:
 |---|---|---|
 | `PORT` | `8765` | Port the page is served on; the reverse proxy points here. |
 | `HOUR12` | `false` | 12-hour clock. |
+| `NIGHT_FROM`, `NIGHT_TO` | `23:00`, `07:00` | Night mode: a dim clock only while nothing plays; a touch brings the dashboard back for a minute. `NIGHT_FROM=off` disables it. |
 | `SPOTIFY_REDIRECT_URI` | `PUBLIC_URL` + `api/spotify/callback` | Where Spotify returns after sign-in. |
 | `SPOTIFY_PLAYER_NAME` | `Dashboard` | Name of the dashboard's own player in Spotify. |
 | `CAST_APP_ID` | public DashCast app | Your own Cast app ID. |
@@ -142,6 +151,7 @@ Only one instance may point at a Hub; two would keep re-casting over each other.
 - `http://<server>:8765/api/debug` shows the keeper state, the Hub's last
   heartbeat (including the layout it measured on its own screen), the player
   state, and recent events.
+  `spotify_errors` lists the latest requests Spotify refused.
   Under `local` it shows the built-in player (`ready` when Chrome is signed
   in to Spotify, and how many pages are listening to its sound); under
   `beat.audio` it shows what the Hub's page is doing with that sound.
