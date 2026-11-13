@@ -33,6 +33,17 @@ ROOT = Path(__file__).parent
 WEB = ROOT / "web"
 
 
+def read_version() -> str:
+    """The release this is (the VERSION file, shipped in the image)."""
+    try:
+        return (ROOT / "VERSION").read_text(encoding="utf-8").strip() or "unknown"
+    except OSError:
+        return "unknown"
+
+
+VERSION = read_version()
+
+
 def load_config() -> dict:
     """Environment variables win; config.json (if present) supplies the rest."""
     path = ROOT / "config.json"
@@ -473,6 +484,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/debug":
             self._json(
                 {
+                    "version": VERSION,
                     "keeper": {
                         "state": keeper.state,
                         "app": keeper.app_name,
@@ -619,7 +631,7 @@ def main() -> None:
     else:
         log.info("no built-in Spotify player here (needs Chrome and PulseAudio)")
     server = Server(("0.0.0.0", CONFIG["port"]), Handler)
-    log.info("serving on port %s, casting %s", CONFIG["port"], CONFIG["public_url"])
+    log.info("hubdash %s serving on port %s, casting %s", VERSION, CONFIG["port"], CONFIG["public_url"])
     server.serve_forever()
 
 

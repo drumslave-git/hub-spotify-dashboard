@@ -18,6 +18,10 @@ class BeatSummaryTests(unittest.TestCase):
             import server
         cls.server = server
 
+    def test_version_comes_from_the_version_file(self):
+        expected = (Path(__file__).resolve().parent.parent / "VERSION").read_text(encoding="utf-8").strip()
+        self.assertEqual(self.server.VERSION, expected)
+
     def test_no_beat_yet(self):
         self.assertEqual(self.server.Keeper().beat_summary(), "none")
 

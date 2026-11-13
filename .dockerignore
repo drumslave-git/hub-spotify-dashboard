@@ -23,6 +23,5 @@ data
 tests
 tools
 docs
-VERSION
 docker-compose.yml
 *.md
