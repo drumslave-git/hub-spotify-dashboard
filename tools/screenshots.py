@@ -25,6 +25,7 @@ OUT = ROOT / "docs" / "screenshots"
 PORT = 8799
 TZ = "Europe/London"
 SUNRISE, SUNSET = "07:12", "16:18"
+MOONRISE, MOONSET = "12:50", "23:05"
 
 # name -> (page query, weather now, rain chance % for each of the next 12 hours)
 # Keep in sync with the README's screenshot section.
@@ -35,6 +36,8 @@ SHOTS = {
                 [0] * 12),
     "rain": ("demo=plain&at=14:05", dict(code=63, temp=8, feels=5, wind=6),
              [90, 85, 70, 55, 40, 25, 15, 10, 5, 5, 0, 0]),
+    "evening": ("demo=idle&at=19:40", dict(code=0, temp=5, feels=3, wind=1),
+                [0] * 12),
     "night": ("demo=night&at=23:40", dict(code=0, temp=4, feels=2, wind=1),
               [0] * 12),
 }
@@ -60,6 +63,8 @@ def weather_at(at: str, now: dict, chances: list[int]) -> dict:
         d = today + dt.timedelta(days=i)
         days.append({"date": d.isoformat(), "code": c, "max": hi, "min": lo, "rain": r,
                      "sunrise": f"{d}T{SUNRISE}", "sunset": f"{d}T{SUNSET}"})
+    moon = [{"rise": f"{d}T{MOONRISE}", "set": f"{d}T{MOONSET}"}
+            for d in (today + dt.timedelta(days=i) for i in range(-1, 4))]
     current = dt.datetime.combine(today, dt.time(hh, mm))
     return {
         "place": "London", "humidity": 80, **now,
@@ -69,6 +74,7 @@ def weather_at(at: str, now: dict, chances: list[int]) -> dict:
         "rain": [{"time": iso(t), "chance": chances[i], "mm": chances[i] / 40 if chances[i] >= 30 else 0,
                   "code": code(t, chances[i])} for i, t in enumerate(hours)],
         "days": days,
+        "moon": moon,
         "fetched": int(time.time()),
     }
 

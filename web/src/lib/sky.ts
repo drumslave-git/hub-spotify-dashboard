@@ -2,7 +2,7 @@
 // hour, sunset and dusk, timed from today's sunrise and sunset and greyed by
 // clouds, with stars at night and falling rain or snow when it does.
 import type { DayForecast, Weather } from '../types';
-import { minutes } from './time';
+import { minutes, minutesFrom } from './time';
 import { falling, overcast, type Falling } from './weather';
 
 type RGB = [number, number, number];
@@ -115,6 +115,18 @@ export function moonName(p: number): string {
   return p < 0.03 || p > 0.97 ? 'New moon' : p < 0.22 ? 'Waxing crescent' : p < 0.28 ? 'First quarter'
     : p < 0.47 ? 'Waxing gibbous' : p < 0.53 ? 'Full moon' : p < 0.72 ? 'Waning gibbous'
     : p < 0.78 ? 'Last quarter' : 'Waning crescent';
+}
+
+export interface MoonPass { rise: number; set: number }
+
+/** The moon's way across the sky that matters at `min`: the one it is on,
+ *  or else the next, in minutes from the start of `date`. */
+export function moonPassNow(w: Weather | null, date: string, min: number): MoonPass | null {
+  for (const p of w?.moon ?? []) {
+    const pass = { rise: minutesFrom(date, p.rise), set: minutesFrom(date, p.set) };
+    if (pass.set > min) return pass;
+  }
+  return null;
 }
 
 /** The lit part of the moon as seen from the northern hemisphere: the lit

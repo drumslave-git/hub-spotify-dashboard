@@ -50,7 +50,14 @@ export function minutes(iso: string): number {
   return +iso.slice(11, 13) * 60 + +iso.slice(14, 16);
 }
 
+/** Minutes from the start of `date` ("2026-11-13") to an ISO local time,
+ *  so a time tomorrow is past 1440 and one yesterday is below 0. */
+export function minutesFrom(date: string, iso: string): number {
+  return (Date.parse(iso.slice(0, 10)) - Date.parse(date)) / 60000 + minutes(iso);
+}
+
 export function fmtMin(m: number, hour12: boolean): string {
+  m = ((m % 1440) + 1440) % 1440;
   const h = Math.floor(m / 60) % 24, mm = String(m % 60).padStart(2, '0');
   return hour12 ? `${(h + 11) % 12 + 1}:${mm} ${h < 12 ? 'am' : 'pm'}` : `${String(h).padStart(2, '0')}:${mm}`;
 }

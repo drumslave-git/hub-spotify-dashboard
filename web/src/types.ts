@@ -6,9 +6,11 @@ export interface DayForecast {
   date: string; code: number; max: number; min: number;
   sunrise?: string; sunset?: string;
 }
+/** The moon rising and setting again, local times like sunrise and sunset. */
+export interface MoonPass { rise: string; set: string }
 export interface Weather {
   code: number; is_day: number; temp: number; feels: number; wind: number; place: string;
-  hours?: HourForecast[]; rain?: RainHour[]; days?: DayForecast[];
+  hours?: HourForecast[]; rain?: RainHour[]; days?: DayForecast[]; moon?: MoonPass[];
 }
 
 export interface NightHours { from: string; to: string }

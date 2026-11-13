@@ -6,6 +6,7 @@ back to config.json for local development.
 """
 from __future__ import annotations
 
+import datetime as dt
 import html
 import json
 import logging
@@ -26,6 +27,7 @@ from pathlib import Path
 import pychromecast
 from pychromecast.controllers.dashcast import DashCastController
 
+import moon
 from player import SILENCE, LocalPlayer, wav_header
 from spotify import Spotify
 
@@ -201,6 +203,12 @@ class Weather:
             }
             for i in range(len(daily["time"]))
         ]
+        # The moon's rises and sets from yesterday on, so the page also knows
+        # about a moon that rose before midnight.
+        offset = raw.get("utc_offset_seconds", 0)
+        midnight = dt.datetime.fromisoformat(daily["time"][0]).replace(tzinfo=dt.timezone.utc)
+        start = midnight - dt.timedelta(days=1, seconds=offset)
+        moon_passes = moon.passes(w["latitude"], w["longitude"], start, len(days) + 1, offset)
         return {
             "place": w["name"],
             "temp": cur["temperature_2m"],
@@ -212,6 +220,7 @@ class Weather:
             "hours": hours,
             "rain": rain,
             "days": days,
+            "moon": moon_passes,
             "fetched": int(time.time()),
         }
 

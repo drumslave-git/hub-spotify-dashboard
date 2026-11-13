@@ -5,7 +5,7 @@ import { Time, DateLine } from './components/Clock';
 import { Bar, PlayerPanel } from './components/Player';
 import { Sheet, type SheetRow, type SheetState } from './components/Sheet';
 import { Sky } from './components/Sky';
-import { Forecast, nextSunrise, NowWeather, RainChart, rainLine, SunArc } from './components/Weather';
+import { Forecast, nextSunrise, NowWeather, RainChart, rainLine, SkyArc } from './components/Weather';
 import { soundRunning, analyser, unlockSound } from './lib/audio';
 import { classNames } from './lib/classNames';
 import { DEMO_DEVICES, DEMO_LIBRARY } from './lib/demo';
@@ -14,7 +14,7 @@ import { heartbeat, pageStatus, startHeartbeat } from './lib/heartbeat';
 import { demo } from './lib/environment';
 import { useMusic } from './lib/music';
 import { usePlayer, type Action } from './lib/player';
-import { moonName, moonPath, moonPhase, skyLook, sunToday } from './lib/sky';
+import { moonName, moonPassNow, moonPath, moonPhase, skyLook, sunToday } from './lib/sky';
 import { clockFace, fmtMin, localNow, wallTime } from './lib/time';
 import { useTint } from './lib/tint';
 import { tryOut } from './lib/weather';
@@ -102,12 +102,12 @@ export default function App() {
   const local = localNow(now, settings.tz);
   const minuteKey = `${local.date} ${local.min}`;
 
-  // The sky and everything timed by the sun change once a minute.
-  const { weather, sun, sky } = useMemo(() => {
+  // The sky and everything timed by the sun and moon change once a minute.
+  const { weather, sun, sky, moon } = useMemo(() => {
     const sunOf = (w: Weather) => sunToday(w, local.date);
     const weather = tryOut(rawWeather, sunOf, local.min);
     const sun = sunToday(weather, local.date);
-    return { weather, sun, sky: skyLook(weather, local.min, sun) };
+    return { weather, sun, sky: skyLook(weather, local.min, sun), moon: moonPassNow(weather, local.date, local.min) };
   }, [rawWeather, minuteKey]);
 
   // The night clock: the moon tonight and when it gets light.
@@ -226,7 +226,7 @@ export default function App() {
             </div>
             <div className={classNames('flex w-[340px] flex-none flex-col justify-end transition-opacity',
                                nowPlayingShown ? 'opacity-0 duration-250' : 'duration-400 delay-450')}>
-              <SunArc sun={sun} sky={sky} min={local.min} hour12={settings.hour12} />
+              <SkyArc sun={sun} sky={sky} moon={moon} phase={phase} min={local.min} hour12={settings.hour12} />
               <RainChart hours={weather?.rain ?? []} />
               <Forecast w={weather} />
             </div>

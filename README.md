@@ -7,7 +7,8 @@ Spotify player on the right.
 Behind the time and weather is the sky as it is outside: its colours follow
 today's sunrise and sunset (dawn, day, golden hour, dusk, night), clouds grey
 it, rain or snow falls across it, and stars come out on clear nights. An arc
-shows the sun's path today. While music plays here, a soft spectrum in the
+shows the sun's path today, and after dark the moon's, in its phase, with
+moonrise and moonset. While music plays here, a soft spectrum in the
 cover's colour moves with it and the cover breathes with the bass. The night
 clock shows the moon's phase and the next sunrise.
 
@@ -17,6 +18,8 @@ clock shows the moon's phase and the next sunrise.
 | *Morning, with rain on the way and the last song ready to resume* | *Golden hour, music playing on the dashboard* |
 | ![Rain falling across the sky beside a paused song](docs/screenshots/rain.png) | ![Night clock with the moon's phase and the next sunrise](docs/screenshots/night.png) |
 | *Rain now; a song paused on another device* | *Night: a dim clock, the moon's phase, the next sunrise* |
+| ![Clear evening with stars: the moon's arc, a crescent between moonrise and moonset](docs/screenshots/evening.png) | |
+| *Evening: the moon's way across the sky in place of the sun's* | |
 
 - `server.py` serves the page, fetches weather (Open-Meteo), and runs the
   keeper: whenever the Hub is idle it casts the page, and re-casts if the page

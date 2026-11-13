@@ -33,7 +33,7 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY server.py spotify.py player.py docker-entrypoint.py VERSION ./
+COPY server.py spotify.py player.py moon.py docker-entrypoint.py VERSION ./
 COPY --from=web /web/dist ./web/dist
 
 # The service runs as this unprivileged user. The container itself starts as

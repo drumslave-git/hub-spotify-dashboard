@@ -1,6 +1,7 @@
 import type { RainHour, Weather } from '../types';
 import { classNames } from '../lib/classNames';
-import type { SkyLook, Sun } from '../lib/sky';
+import type { ReactNode } from 'react';
+import { moonName, moonPath, type MoonPass, type SkyLook, type Sun } from '../lib/sky';
 import { dur, fmtMin, minutes } from '../lib/time';
 import { deg, describe, isWet, rainOutlook } from '../lib/weather';
 import { WeatherIcon } from './icons';
@@ -93,31 +94,69 @@ export function nextSunrise(sun: Sun | null, min: number): number | null {
   return min < sun.rise ? sun.rise : sun.next?.sunrise ? minutes(sun.next.sunrise) : null;
 }
 
-/** The sun's path today: where it is now, sunrise and sunset under the ends. */
-export function SunArc({ sun, sky, min, hour12 }: { sun: Sun | null; sky: SkyLook; min: number; hour12: boolean }) {
-  if (!sun) return null;
-  const { rise, set, f } = sky;
-  const up = f > 0 && f < 1, a = Math.PI * (1 - Math.max(0, Math.min(1, f)));
-  const x = (170 + 150 * Math.cos(a)).toFixed(1), y = (88 - 76 * Math.sin(a)).toFixed(1);
-  const next = nextSunrise(sun, min);
-  const mid = up
-    ? (set - min <= 150 ? `Sunset in ${dur(set - min)}` : `${dur(set - rise)} of daylight`)
-    : next == null ? 'After sunset'
-    : `Sunrise in ${dur(min < rise ? rise - min : 1440 - min + next)}`;
+/** Where a body is on the arc, 0 at the left end and 1 at the right. */
+function arcPoint(f: number) {
+  const a = Math.PI * (1 - Math.max(0, Math.min(1, f)));
+  return { x: (170 + 150 * Math.cos(a)).toFixed(1), y: (88 - 76 * Math.sin(a)).toFixed(1) };
+}
+
+/** The path across the sky: the horizon, the whole way dotted, the part
+ *  travelled drawn in, the body where it is now, and words under the ends. */
+function Arc({ f, trail, body, left, middle, right }: {
+  f: number; trail: string; body: ReactNode; left: string; middle: string; right: string;
+}) {
+  const up = f > 0 && f < 1, { x, y } = arcPoint(f);
   return (
     <div className="mb-auto text-[15px] text-muted">
       <svg viewBox="0 0 340 96" aria-hidden="true" className="block h-24 w-[340px] overflow-visible" fill="none" strokeLinecap="round">
         <line x1="0" y1="88" x2="340" y2="88" stroke="rgba(255,255,255,0.22)" strokeWidth={1} />
         <path d="M20 88 A150 76 0 0 1 320 88" stroke="rgba(255,255,255,0.3)" strokeWidth={1.5} strokeDasharray="2 5" />
-        {up && <path d={`M20 88A150 76 0 0 1 ${x} ${y}`} className="stroke-warm" strokeWidth={2.5} />}
-        {up && <circle r="13" cx={x} cy={y} className="fill-warm" opacity={0.25} />}
-        {up && <circle r="6.5" cx={x} cy={y} className="fill-warm" />}
+        {up && <path d={`M20 88A150 76 0 0 1 ${x} ${y}`} className={trail} strokeWidth={2.5} />}
+        {up && <g transform={`translate(${x} ${y})`}>{body}</g>}
       </svg>
       <div className="mt-1.5 flex justify-between whitespace-nowrap">
-        <span><b className="font-normal text-fg">{fmtMin(rise, hour12)}</b></span>
-        <span>{mid}</span>
-        <span><b className="font-normal text-fg">{fmtMin(set, hour12)}</b></span>
+        <span><b className="font-normal text-fg">{left}</b></span>
+        <span>{middle}</span>
+        <span><b className="font-normal text-fg">{right}</b></span>
       </div>
     </div>
+  );
+}
+
+/** The path across the sky now: the sun's while it is up; after dark the
+ *  moon's, if it is up or rises before the sun does. */
+export function SkyArc({ sun, sky, moon, phase, min, hour12 }: {
+  sun: Sun | null; sky: SkyLook; moon: MoonPass | null; phase: number; min: number; hour12: boolean;
+}) {
+  if (!sun) return null;
+  const { rise, set, f } = sky;
+  const sunUp = f > 0 && f < 1;
+  const next = nextSunrise(sun, min);
+  const sunriseIn = next == null ? null : min < rise ? rise - min : 1440 - min + next;
+
+  if (!sunUp && moon && moon.rise < min + (sunriseIn ?? 720)) {
+    const moonUp = moon.rise <= min;
+    return (
+      <Arc f={(min - moon.rise) / (moon.set - moon.rise)} trail="stroke-white/70"
+           left={fmtMin(moon.rise, hour12)} right={fmtMin(moon.set, hour12)}
+           middle={!moonUp ? `Moonrise in ${dur(moon.rise - min)}`
+                 : moon.set - min <= 150 ? `Moonset in ${dur(moon.set - min)}` : moonName(phase)}
+           body={<>
+             <circle r="13" fill="white" opacity={0.14} />
+             <g transform="scale(0.8) translate(-12 -12)">
+               <circle cx="12" cy="12" r="10" fill="rgba(255,255,255,0.16)" />
+               <path d={moonPath(phase)} fill="#f3efe4" />
+             </g>
+           </>} />
+    );
+  }
+  return (
+    <Arc f={f} trail="stroke-warm" left={fmtMin(rise, hour12)} right={fmtMin(set, hour12)}
+         middle={sunUp ? (set - min <= 150 ? `Sunset in ${dur(set - min)}` : `${dur(set - rise)} of daylight`)
+               : sunriseIn == null ? 'After sunset' : `Sunrise in ${dur(sunriseIn)}`}
+         body={<>
+           <circle r="13" className="fill-warm" opacity={0.25} />
+           <circle r="6.5" className="fill-warm" />
+         </>} />
   );
 }
