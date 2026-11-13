@@ -233,6 +233,17 @@ class Keeper(threading.Thread):
         self.events.append(time.strftime("%H:%M:%S ") + text)
         del self.events[:-60]
 
+    def beat_summary(self) -> str:
+        """The page's last heartbeat in a few words, for the stale note."""
+        if not self.last_beat:
+            return "none"
+        beat = self.beat
+        parts = [f"{time.time() - self.last_beat:.0f}s ago", f"page up {beat.get('up')}s"]
+        for key in ("sent", "timers", "mem"):
+            if beat.get(key) is not None:
+                parts.append(f"{key} {json.dumps(beat[key], separators=(',', ':'))}")
+        return ", ".join(parts)
+
     def run(self) -> None:
         while True:
             try:
@@ -284,7 +295,10 @@ class Keeper(threading.Thread):
                         self.state = "stale"
                         # Our page has replaced DashCast's own receiver, so it
                         # can't be told to load a URL; close it and start over.
-                        self.note("page stopped reporting; closing it to re-cast")
+                        self.note(
+                            "page stopped reporting; closing it to re-cast "
+                            f"(last beat: {self.beat_summary()})"
+                        )
                         cast.quit_app()  # the idle branch re-casts a few seconds later
                     else:
                         self.state = "showing"

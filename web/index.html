@@ -467,6 +467,8 @@
   var tz, hour12 = false, offset = 0, version = null;
   var lastMinute = null, lastOk = 0;
   var castState = 'pending', touches = 0, loadedAt = Date.now();
+  // How regularly the clock's timer runs: a long gap means the page was frozen.
+  var timers = { maxGap: 0, gaps: 0 }, lastTickAt = 0;
 
   function $(id) { return document.getElementById(id); }
 
@@ -521,6 +523,13 @@
 
   // ---------------------------------------------------------------- clock
   function tick() {
+    var nowAt = performance.now(), gap = lastTickAt ? (nowAt - lastTickAt) / 1000 : 0;
+    lastTickAt = nowAt;
+    if (gap > 5) {
+      timers.gaps++;
+      timers.maxGap = Math.max(timers.maxGap, Math.round(gap));
+      if (gap > 20) beat('timers-paused: ' + Math.round(gap) + ' s');
+    }
     var d = new Date(Date.now() + offset);
     var opts = { hour: '2-digit', minute: '2-digit', hour12: hour12 };
     if (!hour12) opts.hourCycle = 'h23';
@@ -1489,6 +1498,18 @@
   }
 
   // ------------------------------------------------------------ heartbeat
+  // Plain requests, not keepalive ones: the Hub never gives back the 64 KiB
+  // a page may have in keepalive requests at once, so after about 99 beats
+  // (24.5 minutes) every keepalive request failed, the server heard nothing
+  // and re-cast the page. Only a beat sent as the page goes away uses
+  // keepalive. `sent` reports how beats fare and how much keepalive went out.
+  var sent = { ok: 0, failed: 0, error: '', keepalive: 0, keepaliveBytes: 0 };
+  var LEAVING = /^(visibility:hidden|cast:SHUTDOWN|pagehide|freeze)/;
+  function postBeat(json, keepalive) {
+    if (keepalive) { sent.keepalive++; sent.keepaliveBytes += json.length; }
+    return fetch('/api/beat', { method: 'POST', body: json, keepalive: keepalive })
+      .then(function (r) { return r.text(); });   // read it all: the request is over
+  }
   function beat(event) {
     var home = $('home'), side = $('side');
     var body = {
@@ -1515,13 +1536,29 @@
       audio: Object.assign({}, audio, { kb: Math.round(audio.kb), played: Math.round(audio.played) }),
       sky: skyInfo,
       viz: vizOn,
+      sent: sent,
+      timers: timers,
+      mem: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) + '/' +
+        Math.round(performance.memory.jsHeapSizeLimit / 1048576) + ' MB' : null,
       ua: navigator.userAgent
     };
     if (event) body.event = event;
+    var json = JSON.stringify(body), keepalive = !!event && LEAVING.test(event);
+    function failed(e) {
+      sent.failed++;
+      var first = !sent.error;
+      sent.error = String((e && e.message) || e).slice(0, 120);
+      // A keepalive beat that is refused goes again as a plain one, and the
+      // first failure of all shows up on /api/debug.
+      if (keepalive || first) {
+        body.sent = sent;
+        if (first) body.event = (event ? event + '; ' : '') + 'beat-failed: ' + sent.error;
+        fetch('/api/beat', { method: 'POST', body: JSON.stringify(body) }).catch(function () {});
+      }
+    }
     try {
-      fetch('/api/beat', { method: 'POST', body: JSON.stringify(body), keepalive: true })
-        .catch(function () {});
-    } catch (e) {}
+      postBeat(json, keepalive).then(function () { sent.ok++; }, failed);
+    } catch (e) { failed(e); }
   }
 
   // ---------------------------------------------------------- cast receiver
@@ -1594,6 +1631,10 @@
     });
   }).observe(document.documentElement, { childList: true, subtree: true });
   document.addEventListener('visibilitychange', function () { beat('visibility:' + document.visibilityState); });
+  // The browser freezing or unloading the page (the Page Lifecycle events).
+  document.addEventListener('freeze', function () { beat('freeze'); });
+  document.addEventListener('resume', function () { beat('resume'); });
+  window.addEventListener('pagehide', function () { beat('pagehide'); });
   window.addEventListener('error', function (e) { beat('js-error: ' + e.message); });
 
   // The layout is drawn for 1024 x 600 (the Hub); scale it to fit any window.

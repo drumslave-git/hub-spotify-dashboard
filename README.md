@@ -183,6 +183,10 @@ Only one instance may point at a Hub; two would keep re-casting over each other.
   Under `local` it shows the built-in player (`ready` when Chrome is signed
   in to Spotify, and how many pages are listening to its sound); under
   `beat.audio` it shows what the Hub's page is doing with that sound.
+  `beat.sent` counts the page's heartbeats that got through or failed (with
+  the last error), `beat.timers` any long pause in the page's timers (the
+  page was frozen) and `beat.mem` its memory use; a failed heartbeat also
+  shows up under `events` as `beat-failed`.
 - `docker logs -f hubdash` shows the same events live.
 
 ## Local development (Windows)
