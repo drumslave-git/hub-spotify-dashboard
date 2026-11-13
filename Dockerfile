@@ -1,3 +1,13 @@
+# The page: TypeScript, React and Tailwind, built into web/dist.
+FROM node:24-slim AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+# npm install, not npm ci: the lockfile is made on Windows and lacks Linux's
+# optional native/wasm packages, which npm ci's strict check refuses.
+RUN npm install --no-audit --no-fund
+COPY web ./
+RUN npm run build
+
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -24,7 +34,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY server.py spotify.py player.py docker-entrypoint.py VERSION ./
-COPY web ./web
+COPY --from=web /web/dist ./web/dist
 
 # The service runs as this unprivileged user. The container itself starts as
 # root so the entrypoint can make the mounted data folder writable first.

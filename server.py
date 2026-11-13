@@ -30,7 +30,13 @@ from player import SILENCE, LocalPlayer, wav_header
 from spotify import Spotify
 
 ROOT = Path(__file__).parent
-WEB = ROOT / "web"
+# The built page (`npm run build` in web/; the Docker image builds it).
+WEB = ROOT / "web" / "dist"
+# Not left to the system's table: on Windows it can call .js text/plain, and
+# browsers refuse to run a module script served as that.
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("image/svg+xml", ".svg")
 
 
 def read_version() -> str:
@@ -425,7 +431,8 @@ def test_tone() -> None:
 
 
 def page_version() -> str:
-    return str(int(max(p.stat().st_mtime for p in WEB.rglob("*") if p.is_file())))
+    files = [p.stat().st_mtime for p in WEB.rglob("*") if p.is_file()]
+    return str(int(max(files))) if files else "none"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -662,6 +669,8 @@ def main() -> None:
         threading.Thread(target=link_player, name="link", daemon=True).start()
     else:
         log.info("no built-in Spotify player here (needs Chrome and PulseAudio)")
+    if not (WEB / "index.html").is_file():
+        log.warning("The page is not built: run `npm install && npm run build` in web/")
     server = Server(("0.0.0.0", CONFIG["port"]), Handler)
     log.info("hubdash %s serving on port %s, casting %s", VERSION, CONFIG["port"], CONFIG["public_url"])
     server.serve_forever()

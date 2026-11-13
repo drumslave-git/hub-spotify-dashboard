@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", "Google Sans", Roboto, "Segoe UI", system-ui, sans-serif;
+
+  --color-bg: #0b0d10;
+  --color-panel: #121418;
+  --color-raised: #1e2229;
+  --color-line: #262b33;
+  --color-fg: #f3f0ea;
+  --color-muted: #8b9199;
+  --color-warm: #f0b25a;
+  --color-cool: #7db4e8;
+  /* Taken from the album cover (lib/tint.ts): a deep tone for the background
+     and a light tone of the same hue for the main buttons. */
+  --color-tint: #24272d;
+  --color-tint-hi: #eceef2;
+
+  /* The big weather icon moves a little: rays turn, clouds drift, rain falls. */
+  --animate-wx-spin: wx-spin 48s linear infinite;
+  --animate-wx-glow: wx-glow 3.2s ease-in-out infinite alternate;
+  --animate-wx-drift: wx-drift 5s ease-in-out infinite alternate;
+  --animate-wx-rock: wx-rock 7s ease-in-out infinite alternate;
+  --animate-wx-dash: wx-dash 0.7s linear infinite;
+  --animate-wx-fall: wx-fall 1.6s ease-in infinite;
+  --animate-wx-fall-slow: wx-fall 2.8s linear infinite;
+  --animate-wx-flash: wx-flash 4.5s infinite;
+  /* The sky: stars twinkle, rain and snow slide down by one tile. */
+  --animate-twinkle: twinkle 6s ease-in-out infinite alternate;
+  --animate-rain1: rain1 0.55s linear infinite;
+  --animate-rain2: rain2 0.9s linear infinite;
+  --animate-snow1: snow1 10s linear infinite;
+  --animate-snow2: snow2 16s linear infinite;
+
+  @keyframes wx-spin { to { transform: rotate(360deg); } }
+  @keyframes wx-glow { from { transform: scale(0.88); } to { transform: scale(1.08); } }
+  @keyframes wx-drift { from { transform: translateX(-0.6px); } to { transform: translateX(0.8px); } }
+  @keyframes wx-rock { from { transform: rotate(-7deg); } to { transform: rotate(5deg); } }
+  @keyframes wx-dash { to { stroke-dashoffset: -6; } }
+  @keyframes wx-fall { 0% { transform: translateY(-1.5px); opacity: 0; } 30%, 70% { opacity: 1; } 100% { transform: translateY(2.5px); opacity: 0; } }
+  @keyframes wx-flash { 0%, 84%, 89%, 100% { opacity: 1; } 86% { opacity: 0.15; } 91% { opacity: 0.3; } }
+  @keyframes twinkle { from { opacity: 1; } to { opacity: 0.35; } }
+  @keyframes rain1 { to { transform: translateY(200px); } }
+  @keyframes rain2 { to { transform: translateY(300px); } }
+  @keyframes snow1 { 50% { transform: translate(12px, 100px); } 100% { transform: translate(0, 200px); } }
+  @keyframes snow2 { 50% { transform: translate(-16px, 150px); } 100% { transform: translate(0, 300px); } }
+}
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+    overflow: hidden;
+  }
+  body {
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    line-height: normal;   /* the font's own, which the layout is measured in */
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    /* No double-tap zoom or text menus: every tap is a press. */
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+  }
+  /* On a smart display the Cast system adds its own media-control layer over
+     the page. It is invisible here but would swallow every tap. */
+  touch-controls { display: none !important; pointer-events: none !important; }
+  button { outline: none; }
+}
+
+/* A press must be seen at once, before Spotify has answered. */
+@utility press {
+  transition: scale 0.08s, background-color 0.08s, opacity 0.2s;
+  &:active { scale: 0.93; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wx *, .sky * { animation: none !important; }
+}

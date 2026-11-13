@@ -2,7 +2,7 @@
 
 Run:  python tools/screenshots.py
 
-Serves the page from this process on a spare port, with made-up weather for a
+Builds the page (npm in web/), serves it from this process on a spare port, with made-up weather for a
 neutral place and no Spotify sign-in, and has headless Chrome (or Edge)
 capture it at the Hub's 1024x600 in the page's demo states (?demo=, ?at=).
 The weather is fixed per shot, so only real changes to the page change the
@@ -89,8 +89,20 @@ def find_browser() -> str:
     raise SystemExit("Chrome not found; set CHROME_BIN")
 
 
+def build_page() -> None:
+    """Build web/ into web/dist, which the server serves."""
+    npm = shutil.which("npm")
+    if not npm:
+        raise SystemExit("npm not found; install Node.js to build the page")
+    web = ROOT / "web"
+    if not (web / "node_modules").is_dir():
+        subprocess.run([npm, "install"], cwd=web, check=True)
+    subprocess.run([npm, "run", "build"], cwd=web, check=True, stdout=subprocess.DEVNULL)
+
+
 def main() -> None:
     browser = find_browser()
+    build_page()
     OUT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as data, tempfile.TemporaryDirectory() as profile:
         # server.py reads its settings when imported; these win over config.json.

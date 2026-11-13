@@ -3,9 +3,8 @@
 ## Keep the README screenshots current
 
 `docs/screenshots/*.png` show the dashboard in the README. Whenever a change
-alters what the page looks like (anything in `web/index.html` or
-`web/vendor/` that is visible, or what the server sends the page that shows
-on screen), in the same commit:
+alters what the page looks like (anything in `web/` that is visible, or what
+the server sends the page that shows on screen), in the same commit:
 
 1. Run `.venv/Scripts/python.exe tools/screenshots.py` (or `python
    tools/screenshots.py`) to regenerate all of them.

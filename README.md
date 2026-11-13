@@ -26,13 +26,14 @@ clock shows the moon's phase and the next sunrise.
   Spotify Web API (what's playing, play/pause, skip, resume). Volume is
   left to the Hub's own buttons.
 - `player.py` is the dashboard's own Spotify player: it runs Chrome on the
-  server with Spotify's official web player (`web/engine.html`), records
-  Chrome's sound and serves it as a stream.
-- `web/index.html` is the page on the Hub. It registers itself as a Cast
-  receiver with the idle timeout disabled, which is what stops the Hub from
-  closing it, and it plays the server's audio stream. While music plays the
-  page takes the colour of the album cover, picked with Google's
-  `material-color-utilities` (bundled in `web/vendor/material-color.js`).
+  server with Spotify's official web player (`web/engine.html`,
+  `web/src/engine.ts`), records Chrome's sound and serves it as a stream.
+- `web/` is the page on the Hub, in TypeScript with React and Tailwind
+  (Vite builds it into `web/dist`, which the server serves). It registers
+  itself as a Cast receiver with the idle timeout disabled, which is what
+  stops the Hub from closing it, and it plays the server's audio stream.
+  While music plays the page takes the colour of the album cover, picked with
+  Google's `material-color-utilities`.
 
 ## How music works
 
@@ -100,9 +101,9 @@ default when the dashboard's address is plain http, for running locally).
 
 ## Screenshots
 
-The pictures above come from `python tools/screenshots.py`, which serves the
-page with made-up weather for London and captures it in headless Chrome at the
-Hub's 1024x600. Run it after any change to how the page looks and commit the
+The pictures above come from `python tools/screenshots.py`, which builds the
+page, serves it with made-up weather for London and captures it in headless
+Chrome at the Hub's 1024x600. Run it after any change to how the page looks and commit the
 new images with that change.
 
 ## Releases
@@ -114,8 +115,8 @@ python tools/release.py patch
 ```
 
 Commit the bump and push to `main`. The Release workflow then runs the syntax
-check and tests, tags `vX.Y.Z`, and publishes the image to GitHub's container
-registry as `ghcr.io/<owner>/<repo>:X.Y.Z` and `:latest`. Pushes that don't
+check and tests, type-checks and builds the page, tags `vX.Y.Z`, and
+publishes the image to GitHub's container registry as `ghcr.io/<owner>/<repo>:X.Y.Z` and `:latest`. Pushes that don't
 change the version publish nothing. Use `minor` / `major` for bigger changes,
 or just edit the file.
 
@@ -201,6 +202,12 @@ python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
+The page needs Node.js 24 to build:
+
+```bash
+cd web && npm install && npm run build
+```
+
 ```bash
 .venv\Scripts\python.exe server.py --no-keeper
 ```
@@ -210,6 +217,12 @@ environment variables are not set. `--no-keeper` serves the page without
 casting it. The built-in player needs Chrome and PulseAudio, so it only runs
 in the container; `--test-tone` streams a beep instead, to try the page's
 sound path (open `http://localhost:8765/?player=1`).
+
+While working on the page, `npm run dev` in `web/` serves it at
+`http://localhost:5173/` with live reload, passing `/api` to the server on
+port 8765. Without a server, add `?demo=playing` (or `plain`, `idle`,
+`night`, `setup`) for made-up player states; `?at=HH:MM` and `?wx=CODE` show
+other hours and weather.
 
 ```bash
 .venv\Scripts\python.exe -m unittest discover -s tests

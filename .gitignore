@@ -3,6 +3,11 @@
 __pycache__/
 *.pyc
 
+# The page's build (npm run build in web/)
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo
+
 # Local settings and secrets (compose reads .env; config.json is for local runs)
 .env
 .env.*

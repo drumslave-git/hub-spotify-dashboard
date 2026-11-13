@@ -56,9 +56,9 @@ jobs:
           fi
 
   verify:
-    # This project has no linter or type checker, so the gate is a syntax
-    # check plus the tests.
-    name: Syntax check and tests
+    # The gate: a Python syntax check, the tests, and the page's type check
+    # and build.
+    name: Syntax check, tests and page build
     needs: version
     if: needs.version.outputs.changed == 'true'
     runs-on: ubuntu-latest
@@ -71,6 +71,16 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m compileall -q server.py spotify.py player.py docker-entrypoint.py tests tools
       - run: python -m unittest discover -s tests -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # npm install, not npm ci: see the Dockerfile.
+      - run: npm install --no-audit --no-fund
+        working-directory: web
+      - run: npm run build
+        working-directory: web
 
   release:
     name: Tag and publish image
