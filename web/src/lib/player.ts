@@ -4,8 +4,8 @@ import { useEffect, useReducer, useRef, type RefObject } from 'react';
 import type { Player } from '../types';
 import { cutSound, onSoundChange, reloadForSound, soundBlocked, startSound, unlockSound } from './audio';
 import { DEMO } from './demo';
-import { diag } from './diag';
-import { demo } from './env';
+import { pageStatus } from './heartbeat';
+import { demo } from './environment';
 
 /** Paused for longer than this, the screen goes back to the clock. */
 const PAUSE_KEEP = 3 * 60 * 1000;
@@ -27,7 +27,7 @@ export function usePlayer(offset: RefObject<number>) {
     player: null as Player | null,
     note: { text: '', alert: false } as Note,
     barArtist: '',
-    npOn: false,
+    nowPlayingShown: false,
     busy: false,
     holdUntil: 0, alertUntil: 0, pausedAt: 0,
     busyTimer: 0,
@@ -50,7 +50,7 @@ export function usePlayer(offset: RefObject<number>) {
     // Playing, or only just paused: the music takes the screen.
     if (active && !p!.playing) { if (!s.pausedAt) s.pausedAt = Date.now(); }
     else s.pausedAt = 0;
-    s.npOn = active && (!!p!.playing || Date.now() - s.pausedAt < PAUSE_KEEP);
+    s.nowPlayingShown = active && (!!p!.playing || Date.now() - s.pausedAt < PAUSE_KEEP);
 
     if (!p || !ready) {
       s.barArtist = p?.configured ? 'Sign in once to turn the player on' : 'Add the Spotify app ID to finish setup';
@@ -77,8 +77,8 @@ export function usePlayer(offset: RefObject<number>) {
         note('Tap the screen to hear it here', true);
       }
     }
-    diag.view = s.npOn ? 'playing' : 'home';
-    diag.player = !p ? 'none' : !p.connected ? 'not-connected'
+    pageStatus.view = s.nowPlayingShown ? 'playing' : 'home';
+    pageStatus.player = !p ? 'none' : !p.connected ? 'not-connected'
       : p.active ? `${p.playing ? 'playing' : 'paused'}:${p.device}` : 'idle';
     if (draw) redraw();
   }
@@ -160,5 +160,5 @@ export function usePlayer(offset: RefObject<number>) {
     return () => { clearInterval(timer); off(); };
   }, [s]);
 
-  return { player: s.player, note: s.note, barArtist: s.barArtist, npOn: s.npOn, busy: s.busy, command };
+  return { player: s.player, note: s.note, barArtist: s.barArtist, nowPlayingShown: s.nowPlayingShown, busy: s.busy, command };
 }

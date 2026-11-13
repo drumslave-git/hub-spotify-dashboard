@@ -1,5 +1,5 @@
 import type { Settings } from '../types';
-import { at } from './env';
+import { at } from './environment';
 
 function parts(d: Date, opts: Intl.DateTimeFormatOptions, tz?: string): Record<string, string> {
   const out: Record<string, string> = {};

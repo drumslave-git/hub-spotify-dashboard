@@ -1,4 +1,4 @@
-import { cn } from '../lib/cn';
+import { classNames } from '../lib/classNames';
 import { STARS, TILES, type SkyLook } from '../lib/sky';
 
 const STAR_SIZES = [
@@ -25,14 +25,14 @@ export function Sky({ look }: { look: SkyLook }) {
       <div className="absolute top-0 left-0 h-[600px] w-[1024px] transition-opacity duration-[2s]"
            style={{ opacity: look.stars.toFixed(2) }}>
         {STARS.map((shadow, i) => (
-          <i key={i} className={cn('absolute top-0 left-0 animate-twinkle rounded-full', STAR_SIZES[i])} style={{ boxShadow: shadow }} />
+          <i key={i} className={classNames('absolute top-0 left-0 animate-twinkle rounded-full', STAR_SIZES[i])} style={{ boxShadow: shadow }} />
         ))}
       </div>
       {(rain || snow) && (
         <div>
-          <i className={cn(layer, snow ? 'animate-snow1 opacity-85' : cn('animate-rain1', light ? 'opacity-50' : 'opacity-90'))}
+          <i className={classNames(layer, snow ? 'animate-snow1 opacity-85' : classNames('animate-rain1', light ? 'opacity-50' : 'opacity-90'))}
              style={{ backgroundImage: snow ? TILES.snow1 : TILES.rain1 }} />
-          <i className={cn(layer, snow ? 'animate-snow2 opacity-55' : cn('animate-rain2', light ? 'opacity-30' : 'opacity-60'))}
+          <i className={classNames(layer, snow ? 'animate-snow2 opacity-55' : classNames('animate-rain2', light ? 'opacity-30' : 'opacity-60'))}
              style={{ backgroundImage: snow ? TILES.snow2 : TILES.rain2 }} />
         </div>
       )}

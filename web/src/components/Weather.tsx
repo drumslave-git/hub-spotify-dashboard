@@ -1,5 +1,5 @@
 import type { RainHour, Weather } from '../types';
-import { cn } from '../lib/cn';
+import { classNames } from '../lib/classNames';
 import type { SkyLook, Sun } from '../lib/sky';
 import { dur, fmtMin, minutes } from '../lib/time';
 import { deg, describe, isWet, rainOutlook } from '../lib/weather';
@@ -10,14 +10,14 @@ export function NowWeather({ w, compact = false }: { w: Weather | null; compact?
   const today = w?.days?.[0];
   return (
     <div className="flex items-center gap-3.5">
-      <div className={cn('flex-none', compact ? 'size-[54px]' : 'size-14')}>
+      <div className={classNames('flex-none', compact ? 'size-[54px]' : 'size-14')}>
         {w && <WeatherIcon code={w.code} isDay={w.is_day} animated />}
       </div>
-      <div className={cn('leading-none font-light tracking-[-0.04em]', compact ? 'text-[64px]' : 'text-[68px]')}>
+      <div className={classNames('leading-none font-light tracking-[-0.04em]', compact ? 'text-[64px]' : 'text-[68px]')}>
         {w ? deg(w.temp) : '--°'}
       </div>
       <div className="min-w-0 pl-0.5">
-        <div className={cn('whitespace-nowrap', compact ? 'text-[19px]' : 'text-[20px]')}>{w ? describe(w.code) : ' '}</div>
+        <div className={classNames('whitespace-nowrap', compact ? 'text-[19px]' : 'text-[20px]')}>{w ? describe(w.code) : ' '}</div>
         <div className="mt-[3px] text-[15px] whitespace-nowrap text-muted">
           {!w ? ' ' : compact ? (
             `Feels ${deg(w.feels)}` + (today ? ` · ↑${deg(today.max)} ↓${deg(today.min)}` : '')
@@ -46,7 +46,7 @@ export function Forecast({ w, compact = false }: { w: Weather | null; compact?: 
   return (
     <div className={compact ? '' : 'mt-3.5'}>
       {rows.map((r, i) => (
-        <div key={i} className={cn('flex items-center gap-3.5 border-t border-raised text-[18px] whitespace-nowrap', compact ? 'h-[38px]' : 'h-[42px]')}>
+        <div key={i} className={classNames('flex items-center gap-3.5 border-t border-raised text-[18px] whitespace-nowrap', compact ? 'h-[38px]' : 'h-[42px]')}>
           <span className="w-14 text-[15px] text-muted">{r.when}</span>
           <span className="size-[22px] flex-none"><WeatherIcon code={r.code} isDay={r.isDay} /></span>
           <span className="min-w-0 flex-1 truncate">{describe(r.code)}</span>
@@ -68,7 +68,7 @@ export function RainChart({ hours }: { hours: RainHour[] }) {
       </div>
       <div className="mt-2 flex h-7 items-end gap-[5px]">
         {hours.map((h, i) => (
-          <i key={i} className={cn('min-h-[3px] flex-1 rounded-[3px]', isWet(h) ? 'bg-cool' : 'bg-line')}
+          <i key={i} className={classNames('min-h-[3px] flex-1 rounded-[3px]', isWet(h) ? 'bg-cool' : 'bg-line')}
              style={{ height: `${Math.max(8, h.chance)}%` }} />
         ))}
       </div>

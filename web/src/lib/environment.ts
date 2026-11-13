@@ -1,7 +1,7 @@
 // The page's address settings, for trying things out:
 //   ?demo=playing|plain|idle|night|setup  made-up player states, no server calls
 //   ?at=HH:MM   the sky and the clock at another hour
-//   ?wx=CODE    other weather (a WMO weather code)
+//   ?weather=CODE    other weather (a WMO weather code)
 //   ?player=1   play the sound on a desktop browser too
 //   ?audio=element  use an <audio> element instead of Web Audio
 //   ?cast=0     don't start the Cast receiver

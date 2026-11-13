@@ -1,8 +1,8 @@
 // Sound on this device. The server runs the Spotify player; this page plays
 // its sound. The audio arrives as plain 16-bit stereo samples and is queued on
 // the Web Audio clock, so pausing and skipping can cut it off at once.
-import { beat, diag } from './diag';
-import { demo, isCast, loadedAt, params } from './env';
+import { heartbeat, pageStatus } from './heartbeat';
+import { demo, isCast, loadedAt, params } from './environment';
 
 const RATE = 44100, LEAD = 0.25, MAX_AHEAD = 1.5, MIN_BYTES = RATE * 4 / 20;
 
@@ -54,7 +54,7 @@ export function startSound() {
   reportSoundReload();
   c.onstatechange = () => {
     audio.state = c.state;
-    beat('audio:' + c.state);
+    heartbeat('audio:' + c.state);
     changed();
   };
   readStream();
@@ -173,18 +173,18 @@ export const soundRunning = () => !!ctx && ctx.state === 'running';
 const RELOAD_KEY = 'hubdash.soundReload';
 let reloading = false;
 export function reloadForSound() {
-  if (diag.touches || reloading || !isCast || Date.now() - loadedAt < 3000) return;
+  if (pageStatus.touches || reloading || !isCast || Date.now() - loadedAt < 3000) return;
   try {
     if (Date.now() - (+(sessionStorage.getItem(RELOAD_KEY) ?? 0) || 0) < 600000) return;
     sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
   } catch { return; }
   reloading = true;
-  beat('sound-reload');
+  heartbeat('sound-reload');
   setTimeout(() => location.reload(), 300);
 }
 function reportSoundReload() {
   try {
     if (Date.now() - (+(sessionStorage.getItem(RELOAD_KEY) ?? 0) || 0) > 60000) return;
   } catch { return; }
-  setTimeout(() => beat('after-sound-reload:' + audio.state), 2000);
+  setTimeout(() => heartbeat('after-sound-reload:' + audio.state), 2000);
 }

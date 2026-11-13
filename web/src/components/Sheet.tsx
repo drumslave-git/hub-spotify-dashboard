@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { cn } from '../lib/cn';
+import { classNames } from '../lib/classNames';
 import { Chip } from './buttons';
 import { BackIcon, CloseIcon, MoreIcon, NoteIcon, SpeakerIcon } from './icons';
 
@@ -44,13 +44,13 @@ export function Sheet({ sheet, setPage, pick, close }: {
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[20px]">{row.name}</span>
-              <span className={cn('mt-[3px] block truncate text-[15px]', row.now ? 'text-warm' : 'text-muted')}>{row.sub}</span>
+              <span className={classNames('mt-[3px] block truncate text-[15px]', row.now ? 'text-warm' : 'text-muted')}>{row.sub}</span>
             </span>
           </button>
         ))}
         {!rows.length && <div className="col-span-full px-3 py-4 text-[20px] leading-[1.4] text-muted">{sheet.empty}</div>}
       </div>
-      <div className={cn('mt-3 flex items-center gap-4 text-[18px] text-muted', pages < 2 && 'invisible')}>
+      <div className={classNames('mt-3 flex items-center gap-4 text-[18px] text-muted', pages < 2 && 'invisible')}>
         <button type="button" aria-label="Previous page" disabled={page === 0} onClick={() => setPage(page - 1)}
                 className="press flex h-18 flex-1 items-center justify-center rounded-[20px] bg-raised active:bg-[#2c313a] disabled:opacity-30">
           <BackIcon className="size-7" />

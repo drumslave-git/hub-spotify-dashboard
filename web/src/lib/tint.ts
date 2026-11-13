@@ -4,7 +4,7 @@
 // buttons. A grey cover, or one that can't be read, leaves the neutral grey.
 import { argbFromRgb, Hct, hexFromArgb, QuantizerCelebi, Score, TonalPalette } from '@material/material-color-utilities';
 import { useEffect, useState } from 'react';
-import { beat } from './diag';
+import { heartbeat } from './heartbeat';
 
 export interface Tint { tint: string; hi: string }
 export const NEUTRAL: Tint = { tint: '#24272d', hi: '#eceef2' };
@@ -40,7 +40,7 @@ export function useTint(url: string | null | undefined): Tint {
     img.crossOrigin = 'anonymous';   // Spotify's image server allows reading the pixels
     img.onload = () => {
       let t = NEUTRAL;
-      try { t = coverTint(img); } catch (e) { beat('tint: ' + (e as Error)?.message); }
+      try { t = coverTint(img); } catch (e) { heartbeat('tint: ' + (e as Error)?.message); }
       tints.set(url, t);
       if (current) setTint(t);
     };

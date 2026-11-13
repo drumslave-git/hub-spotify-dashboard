@@ -177,8 +177,8 @@ Only one instance may point at a Hub; two would keep re-casting over each other.
 - `http://<server>:8765/` shows the page in a browser. Add `?demo=playing` or
   `?demo=idle` to see the player states without Spotify.
   `?at=HH:MM` shows the sky at another hour (the clock stays real) and
-  `?wx=<code>` other weather (an Open-Meteo weather code: 0 clear, 3 overcast,
-  63 rain, 73 snow, 95 thunder), e.g. `?demo=idle&at=16:00&wx=0`.
+  `?weather=<code>` other weather (an Open-Meteo weather code: 0 clear, 3 overcast,
+  63 rain, 73 snow, 95 thunder), e.g. `?demo=idle&at=16:00&weather=0`.
 - `http://<server>:8765/api/debug` shows the keeper state, the Hub's last
   heartbeat (including the layout it measured on its own screen), the player
   state, and recent events.
@@ -221,7 +221,7 @@ sound path (open `http://localhost:8765/?player=1`).
 While working on the page, `npm run dev` in `web/` serves it at
 `http://localhost:5173/` with live reload, passing `/api` to the server on
 port 8765. Without a server, add `?demo=playing` (or `plain`, `idle`,
-`night`, `setup`) for made-up player states; `?at=HH:MM` and `?wx=CODE` show
+`night`, `setup`) for made-up player states; `?at=HH:MM` and `?weather=CODE` show
 other hours and weather.
 
 ```bash

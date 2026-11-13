@@ -1,5 +1,5 @@
 import type { RainHour, Weather } from '../types';
-import { params } from './env';
+import { params } from './environment';
 
 export type Kind =
   | 'clearDay' | 'clearNight' | 'partlyDay' | 'partlyNight' | 'cloudy'
@@ -82,11 +82,11 @@ export function rainOutlook(hours: RainHour[]): RainOutlook {
 
 export const isWet = (h: RainHour) => h.chance >= 30 || h.mm >= 0.2;
 
-/** ?wx=CODE and ?at=HH:MM: try other weather and hours on the real page. */
+/** ?weather=CODE and ?at=HH:MM: try other weather and hours on the real page. */
 export function tryOut(w: Weather | null, sun: (w: Weather) => { rise: number; set: number } | null, min: number): Weather | null {
   if (!w) return w;
   const out = { ...w };
-  if (params.get('wx')) out.code = +params.get('wx')!;
+  if (params.get('weather')) out.code = +params.get('weather')!;
   if (params.get('at')) {
     const s = sun(out);
     if (s) out.is_day = min >= s.rise && min < s.set ? 1 : 0;

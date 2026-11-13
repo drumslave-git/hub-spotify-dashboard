@@ -1,5 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
-import { cn } from '../lib/cn';
+import { classNames } from '../lib/classNames';
 
 // Every control is at least 72 px: a fingertip on the Hub. A press shows at
 // once (`press`), before Spotify has answered.
@@ -12,14 +12,14 @@ export function Chip({ on, ghost, className, ...rest }: Props & { on?: boolean; 
   const look = ghost
     ? (on ? 'bg-white/18 text-tint-hi' : 'bg-transparent active:bg-white/18')
     : (on ? 'bg-tint-hi text-tint' : 'bg-white/13 active:bg-white/32');
-  return <button type="button" className={cn(base, 'size-18 rounded-full', look, className)} {...rest} />;
+  return <button type="button" className={classNames(base, 'size-18 rounded-full', look, className)} {...rest} />;
 }
 
 /** A 72 px tall button with an icon and a word. */
 export function Pill({ className, ...rest }: Props) {
   return (
     <button type="button"
-            className={cn(base, 'h-18 gap-2.5 rounded-full bg-white/14 pr-6 pl-5 text-[18px] active:bg-white/32', className)}
+            className={classNames(base, 'h-18 gap-2.5 rounded-full bg-white/14 pr-6 pl-5 text-[18px] active:bg-white/32', className)}
             {...rest} />
   );
 }
@@ -27,7 +27,7 @@ export function Pill({ className, ...rest }: Props) {
 /** Previous and next: a large icon without a background. */
 export function Big({ busy, className, ...rest }: Props & { busy?: boolean }) {
   return (
-    <button type="button" className={cn(base, 'size-22 rounded-full active:bg-white/18', busy && 'opacity-50', className)} {...rest} />
+    <button type="button" className={classNames(base, 'size-22 rounded-full active:bg-white/18', busy && 'opacity-50', className)} {...rest} />
   );
 }
 
@@ -35,7 +35,7 @@ export function Big({ busy, className, ...rest }: Props & { busy?: boolean }) {
 export function Main({ busy, wide, className, ...rest }: Props & { busy?: boolean; wide?: boolean }) {
   return (
     <button type="button"
-            className={cn(base, wide ? 'h-18 w-28 rounded-full' : 'size-26 rounded-full',
+            className={classNames(base, wide ? 'h-18 w-28 rounded-full' : 'size-26 rounded-full',
                           'bg-tint-hi text-tint active:bg-white', busy && 'opacity-50', className)}
             {...rest} />
   );

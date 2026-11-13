@@ -17,14 +17,14 @@
   --color-tint-hi: #eceef2;
 
   /* The big weather icon moves a little: rays turn, clouds drift, rain falls. */
-  --animate-wx-spin: wx-spin 48s linear infinite;
-  --animate-wx-glow: wx-glow 3.2s ease-in-out infinite alternate;
-  --animate-wx-drift: wx-drift 5s ease-in-out infinite alternate;
-  --animate-wx-rock: wx-rock 7s ease-in-out infinite alternate;
-  --animate-wx-dash: wx-dash 0.7s linear infinite;
-  --animate-wx-fall: wx-fall 1.6s ease-in infinite;
-  --animate-wx-fall-slow: wx-fall 2.8s linear infinite;
-  --animate-wx-flash: wx-flash 4.5s infinite;
+  --animate-weather-spin: weather-spin 48s linear infinite;
+  --animate-weather-glow: weather-glow 3.2s ease-in-out infinite alternate;
+  --animate-weather-drift: weather-drift 5s ease-in-out infinite alternate;
+  --animate-weather-rock: weather-rock 7s ease-in-out infinite alternate;
+  --animate-weather-dash: weather-dash 0.7s linear infinite;
+  --animate-weather-fall: weather-fall 1.6s ease-in infinite;
+  --animate-weather-fall-slow: weather-fall 2.8s linear infinite;
+  --animate-weather-flash: weather-flash 4.5s infinite;
   /* The sky: stars twinkle, rain and snow slide down by one tile. */
   --animate-twinkle: twinkle 6s ease-in-out infinite alternate;
   --animate-rain1: rain1 0.55s linear infinite;
@@ -32,13 +32,13 @@
   --animate-snow1: snow1 10s linear infinite;
   --animate-snow2: snow2 16s linear infinite;
 
-  @keyframes wx-spin { to { transform: rotate(360deg); } }
-  @keyframes wx-glow { from { transform: scale(0.88); } to { transform: scale(1.08); } }
-  @keyframes wx-drift { from { transform: translateX(-0.6px); } to { transform: translateX(0.8px); } }
-  @keyframes wx-rock { from { transform: rotate(-7deg); } to { transform: rotate(5deg); } }
-  @keyframes wx-dash { to { stroke-dashoffset: -6; } }
-  @keyframes wx-fall { 0% { transform: translateY(-1.5px); opacity: 0; } 30%, 70% { opacity: 1; } 100% { transform: translateY(2.5px); opacity: 0; } }
-  @keyframes wx-flash { 0%, 84%, 89%, 100% { opacity: 1; } 86% { opacity: 0.15; } 91% { opacity: 0.3; } }
+  @keyframes weather-spin { to { transform: rotate(360deg); } }
+  @keyframes weather-glow { from { transform: scale(0.88); } to { transform: scale(1.08); } }
+  @keyframes weather-drift { from { transform: translateX(-0.6px); } to { transform: translateX(0.8px); } }
+  @keyframes weather-rock { from { transform: rotate(-7deg); } to { transform: rotate(5deg); } }
+  @keyframes weather-dash { to { stroke-dashoffset: -6; } }
+  @keyframes weather-fall { 0% { transform: translateY(-1.5px); opacity: 0; } 30%, 70% { opacity: 1; } 100% { transform: translateY(2.5px); opacity: 0; } }
+  @keyframes weather-flash { 0%, 84%, 89%, 100% { opacity: 1; } 86% { opacity: 0.15; } 91% { opacity: 0.3; } }
   @keyframes twinkle { from { opacity: 1; } to { opacity: 0.35; } }
   @keyframes rain1 { to { transform: translateY(200px); } }
   @keyframes rain2 { to { transform: translateY(300px); } }
@@ -75,5 +75,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .wx *, .sky * { animation: none !important; }
+  .weather-icon *, .sky * { animation: none !important; }
 }

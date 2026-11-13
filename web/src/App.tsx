@@ -7,10 +7,11 @@ import { Sheet, type SheetRow, type SheetState } from './components/Sheet';
 import { Sky } from './components/Sky';
 import { Forecast, nextSunrise, NowWeather, RainChart, rainLine, SunArc } from './components/Weather';
 import { soundRunning, analyser, unlockSound } from './lib/audio';
-import { cn } from './lib/cn';
+import { classNames } from './lib/classNames';
 import { DEMO_DEVICES, DEMO_LIBRARY } from './lib/demo';
-import { beat, diag, startDiagnostics } from './lib/diag';
-import { demo } from './lib/env';
+import { startCastReceiver } from './lib/castReceiver';
+import { heartbeat, pageStatus, startHeartbeat } from './lib/heartbeat';
+import { demo } from './lib/environment';
 import { useMusic } from './lib/music';
 import { usePlayer, type Action } from './lib/player';
 import { moonName, moonPath, moonPhase, skyLook, sunToday } from './lib/sky';
@@ -27,9 +28,9 @@ function useNow(): number {
       const at = performance.now(), gap = (at - lastTickAt) / 1000;
       lastTickAt = at;
       if (gap > 5) {
-        diag.timers.gaps++;
-        diag.timers.maxGap = Math.max(diag.timers.maxGap, Math.round(gap));
-        if (gap > 20) beat(`timers-paused: ${Math.round(gap)} s`);
+        pageStatus.timers.gaps++;
+        pageStatus.timers.maxGap = Math.max(pageStatus.timers.maxGap, Math.round(gap));
+        if (gap > 20) heartbeat(`timers-paused: ${Math.round(gap)} s`);
       }
       setNow(Date.now());
     }, 1000);
@@ -78,7 +79,7 @@ function useStageScale(): number {
     addEventListener('resize', onResize);
     return () => removeEventListener('resize', onResize);
   }, []);
-  diag.stageScale = scale;
+  pageStatus.stageScale = scale;
   return scale;
 }
 
@@ -92,7 +93,7 @@ export default function App() {
   const scale = useStageScale();
   const offsetRef = useRef(0);
   offsetRef.current = settings.offset;
-  const { player, note, barArtist, npOn, busy, command } = usePlayer(offsetRef);
+  const { player, note, barArtist, nowPlayingShown, busy, command } = usePlayer(offsetRef);
   const [wakeUntil, setWakeUntil] = useState(0);
   const [sheet, setSheet] = useState<SheetState | null>(null);
 
@@ -112,7 +113,7 @@ export default function App() {
   // The night clock: the moon tonight and when it gets light.
   const phase = moonPhase(now);
   const sunrise = nextSunrise(sun, local.min);
-  diag.sky = { sky: sky.name, cloud: sky.cloud, falling: sky.falling, moon: moonName(phase),
+  pageStatus.sky = { sky: sky.name, cloud: sky.cloud, falling: sky.falling, moon: moonName(phase),
                sun: sun ? `${fmtMin(sun.rise, settings.hour12)}-${fmtMin(sun.set, settings.hour12)}` : null };
 
   // Between the set hours the page shows only a dim clock, unless music is
@@ -125,11 +126,11 @@ export default function App() {
   }
 
   // The receiver and the heartbeat start once the page is on screen.
-  useEffect(startDiagnostics, []);
+  useEffect(() => { startCastReceiver(); startHeartbeat(); }, []);
 
   useEffect(() => {
     const onTouch = () => {
-      diag.touches++;
+      pageStatus.touches++;
       setWakeUntil(Date.now() + 60 * 1000);
       unlockSound();   // any touch unlocks sound for the in-page player
     };
@@ -143,7 +144,7 @@ export default function App() {
   const art = ready ? shown?.art ?? null : null;
   const tint = useTint(art);
   const canvas = useRef<HTMLCanvasElement>(null), glow = useRef<HTMLDivElement>(null), artRef = useRef<HTMLDivElement>(null);
-  const music = !!(player?.active && player.playing && npOn && !nightOn &&
+  const music = !!(player?.active && player.playing && nowPlayingShown && !nightOn &&
                    (demo || (analyser && player.on_dashboard && soundRunning())));
   useMusic(music, tint.hi, canvas, glow, artRef);
 
@@ -199,32 +200,32 @@ export default function App() {
   return (
     <>
       <div id="stage"
-           className={cn('absolute top-1/2 left-1/2 -mt-[300px] -ml-[512px] h-[600px] w-[1024px] overflow-hidden tabular-nums', nightOn && 'invisible')}
+           className={classNames('absolute top-1/2 left-1/2 -mt-[300px] -ml-[512px] h-[600px] w-[1024px] overflow-hidden tabular-nums', nightOn && 'invisible')}
            style={{ transform: `scale(${scale})`, '--cover': sky.cover } as CSSProperties}>
         <Sky look={sky} />
 
         {/* The bar and the player's panel are one tinted surface: it grows
             from the bar into the panel while the home view fades out, then
             the player's words fade in on it. Stopping runs the same way back. */}
-        <div className={cn('absolute inset-0 bg-tint',
-          npOn ? '[clip-path:inset(0px_0px_0px_400px_round_0px)] [transition:clip-path_0.6s_cubic-bezier(0.65,0,0.35,1),background-color_0.8s]'
+        <div className={classNames('absolute inset-0 bg-tint',
+          nowPlayingShown ? '[clip-path:inset(0px_0px_0px_400px_round_0px)] [transition:clip-path_0.6s_cubic-bezier(0.65,0,0.35,1),background-color_0.8s]'
                : '[clip-path:inset(468px_32px_28px_32px_round_26px)] [transition:clip-path_0.6s_cubic-bezier(0.65,0,0.35,1)_0.15s,background-color_0.8s]',
           'motion-reduce:[transition:background-color_0.8s]')} />
 
         {/* Home: time, weather, and the player waiting as one bar. */}
-        <section id="home" className={cn('absolute inset-0 flex flex-col gap-[22px] px-8 pt-[30px] pb-7', onSky,
-                                          npOn && 'invisible [transition:visibility_0s_0.25s]')}>
+        <section id="home" className={classNames('absolute inset-0 flex flex-col gap-[22px] px-8 pt-[30px] pb-7', onSky,
+                                          nowPlayingShown && 'invisible [transition:visibility_0s_0.25s]')}>
           <div className="flex min-h-0 flex-1 justify-between gap-10 px-1">
-            <div className={cn('flex min-w-0 flex-col justify-between transition-opacity',
-                               npOn ? 'opacity-0 duration-250' : 'duration-400 delay-150')}>
+            <div className={classNames('flex min-w-0 flex-col justify-between transition-opacity',
+                               nowPlayingShown ? 'opacity-0 duration-250' : 'duration-400 delay-150')}>
               <div>
                 <Time id="time" face={face} colon={skyColon} className="text-[196px] leading-[0.84] tracking-[-0.05em]" />
                 <DateLine face={face} className="mt-[22px] text-[24px]" />
               </div>
               <NowWeather w={weather} />
             </div>
-            <div className={cn('flex w-[340px] flex-none flex-col justify-end transition-opacity',
-                               npOn ? 'opacity-0 duration-250' : 'duration-400 delay-450')}>
+            <div className={classNames('flex w-[340px] flex-none flex-col justify-end transition-opacity',
+                               nowPlayingShown ? 'opacity-0 duration-250' : 'duration-400 delay-450')}>
               <SunArc sun={sun} sky={sky} min={local.min} hour12={settings.hour12} />
               <RainChart hours={weather?.rain ?? []} />
               <Forecast w={weather} />
@@ -232,26 +233,26 @@ export default function App() {
           </div>
           <Bar player={player} title={barTitle} artist={barArtist} note={note} busy={busy} art={art}
                command={command} open={openSheet}
-               className={cn('transition-opacity', npOn ? 'opacity-0 duration-250' : 'duration-300 delay-600')} />
+               className={classNames('transition-opacity', nowPlayingShown ? 'opacity-0 duration-250' : 'duration-300 delay-600')} />
         </section>
 
         {/* Music playing: time and weather left, a cover-tinted panel right. */}
-        <section id="player" className={cn('absolute inset-0 grid grid-cols-[400px_624px]',
-                                            npOn ? 'visible' : 'invisible [transition:visibility_0s_0.25s]')}>
-          <div className={cn('flex min-w-0 flex-col justify-between pt-[30px] pr-7 pb-7 pl-8', onSky,
-                             npOn ? 'opacity-100 [transition:opacity_0.45s_0.25s]' : 'opacity-0 [transition:opacity_0.25s]')}>
+        <section id="player" className={classNames('absolute inset-0 grid grid-cols-[400px_624px]',
+                                            nowPlayingShown ? 'visible' : 'invisible [transition:visibility_0s_0.25s]')}>
+          <div className={classNames('flex min-w-0 flex-col justify-between pt-[30px] pr-7 pb-7 pl-8', onSky,
+                             nowPlayingShown ? 'opacity-100 [transition:opacity_0.45s_0.25s]' : 'opacity-0 [transition:opacity_0.25s]')}>
             <div>
               <Time face={face} colon={skyColon} className="text-[128px] leading-[0.88] tracking-[-0.045em]" />
               <DateLine face={face} className="mt-4 text-[21px]" />
             </div>
             <div>
               <NowWeather w={weather} compact />
-              <div className={cn('mt-3.5 text-[15px] whitespace-nowrap', npRain.wet ? 'text-cool' : 'text-muted')}>{npRain.text}</div>
+              <div className={classNames('mt-3.5 text-[15px] whitespace-nowrap', npRain.wet ? 'text-cool' : 'text-muted')}>{npRain.text}</div>
             </div>
             <Forecast w={weather} compact />
           </div>
           <PlayerPanel player={player} note={note} busy={busy} offset={settings.offset} command={command} open={openSheet}
-                       shown={npOn} canvas={canvas} glow={glow} art={artRef} />
+                       shown={nowPlayingShown} canvas={canvas} glow={glow} art={artRef} />
         </section>
 
         {sheet && <Sheet sheet={sheet} setPage={(page) => setSheet({ ...sheet, page })} pick={pick} close={closeSheet} />}

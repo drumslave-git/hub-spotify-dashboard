@@ -3,7 +3,7 @@
 // in the cover's colour. About 30 frames a second, and only while it plays.
 import { useEffect, useRef, type RefObject } from 'react';
 import { analyser, ctx } from './audio';
-import { diag } from './diag';
+import { pageStatus } from './heartbeat';
 import { rgb } from './sky';
 import { NEUTRAL } from './tint';
 
@@ -43,7 +43,7 @@ export function useMusic(
   useEffect(() => {
     const g = canvas.current?.getContext('2d');
     if (!on || !g) return;
-    diag.viz = true;
+    pageStatus.visualizer = true;
     const shown = new Array<number>(BARS).fill(0);
     const bins = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
     let last = 0, raf = 0, fill: CanvasGradient | null = null, fillFor = '';
@@ -83,7 +83,7 @@ export function useMusic(
 
     return () => {
       cancelAnimationFrame(raf);
-      diag.viz = false;
+      pageStatus.visualizer = false;
       g.clearRect(0, 0, W, H);
       if (glow.current) glow.current.style.opacity = '0';
       if (art.current) art.current.style.transform = '';

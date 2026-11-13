@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { cn } from '../lib/cn';
+import { classNames } from '../lib/classNames';
 import { kind as weatherKind } from '../lib/weather';
 
 interface IconProps { className?: string }
@@ -61,7 +61,7 @@ const coverCls = 'fill-[var(--cover,var(--color-bg))]';
 
 export function WeatherIcon({ code, isDay, animated = false }: { code: number; isDay: boolean | number; animated?: boolean }) {
   const a = (cls: string) => (animated ? cls : '');
-  const drift = a('animate-wx-drift');
+  const drift = a('animate-weather-drift');
   const rainTop = <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" />;
   const cloud = (
     <g className={drift}><path className={coverCls} d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" /></g>
@@ -79,20 +79,20 @@ export function WeatherIcon({ code, isDay, animated = false }: { code: number; i
       body = (
         <g className={sunCls}>
           <circle cx="12" cy="12" r="5" />
-          <path className={a('origin-[12px_12px] animate-wx-spin')}
+          <path className={a('origin-[12px_12px] animate-weather-spin')}
                 d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
         </g>
       );
       break;
     case 'clearNight':
-      body = <path className={a('origin-[12px_12px] animate-wx-rock')} d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />;
+      body = <path className={a('origin-[12px_12px] animate-weather-rock')} d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />;
       break;
     case 'partlyDay':
       body = (
         <>
           <g className={sunCls}>
             <circle cx="17" cy="7.5" r="3.4" />
-            <path className={a('origin-[17px_7.5px] animate-wx-glow')} d="M17 1.2v1.3M22 7.5h1.3M11.9 2.4l.9.9M21.2 3.3l.9-.9" />
+            <path className={a('origin-[17px_7.5px] animate-weather-glow')} d="M17 1.2v1.3M22 7.5h1.3M11.9 2.4l.9.9M21.2 3.3l.9-.9" />
           </g>
           {lowCloud}
         </>
@@ -101,7 +101,7 @@ export function WeatherIcon({ code, isDay, animated = false }: { code: number; i
     case 'partlyNight':
       body = (
         <>
-          <g className={a('origin-[17px_6px] animate-wx-rock')}>
+          <g className={a('origin-[17px_6px] animate-weather-rock')}>
             <path transform="translate(11.5 0) scale(.5)" vectorEffect="non-scaling-stroke" d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
           </g>
           {lowCloud}
@@ -116,7 +116,7 @@ export function WeatherIcon({ code, isDay, animated = false }: { code: number; i
         <>
           {rainTop}
           <path className={drift} d="M7 19.5h11" />
-          <path className={cn(drift, a('[animation-delay:-2.5s]'))} d="M9.5 23h6" />
+          <path className={classNames(drift, a('[animation-delay:-2.5s]'))} d="M9.5 23h6" />
         </>
       );
       break;
@@ -124,8 +124,8 @@ export function WeatherIcon({ code, isDay, animated = false }: { code: number; i
       body = (
         <>
           {rainTop}
-          <path className={cn(dropCls, a('animate-wx-fall'))} d="M8 13v2M16 19v2M12 15v2" />
-          <path className={cn(dropCls, a('animate-wx-fall [animation-delay:-0.8s]'))} d="M8 19v2M16 13v2M12 21v2" />
+          <path className={classNames(dropCls, a('animate-weather-fall'))} d="M8 13v2M16 19v2M12 15v2" />
+          <path className={classNames(dropCls, a('animate-weather-fall [animation-delay:-0.8s]'))} d="M8 19v2M16 13v2M12 21v2" />
         </>
       );
       break;
@@ -133,7 +133,7 @@ export function WeatherIcon({ code, isDay, animated = false }: { code: number; i
       body = (
         <>
           {rainTop}
-          <path className={cn(dropCls, a('[stroke-dasharray:3.5_2.5] animate-wx-dash'))} d="M16 13v8M8 13v8M12 15v8" />
+          <path className={classNames(dropCls, a('[stroke-dasharray:3.5_2.5] animate-weather-dash'))} d="M16 13v8M8 13v8M12 15v8" />
         </>
       );
       break;
@@ -141,8 +141,8 @@ export function WeatherIcon({ code, isDay, animated = false }: { code: number; i
       body = (
         <>
           <path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25" />
-          <path className={cn(dropCls, a('animate-wx-fall-slow'))} d="M8 16h.01M12 18h.01M16 16h.01" />
-          <path className={cn(dropCls, a('animate-wx-fall-slow [animation-delay:-1.4s]'))} d="M8 20h.01M12 22h.01M16 20h.01" />
+          <path className={classNames(dropCls, a('animate-weather-fall-slow'))} d="M8 16h.01M12 18h.01M16 16h.01" />
+          <path className={classNames(dropCls, a('animate-weather-fall-slow [animation-delay:-1.4s]'))} d="M8 20h.01M12 22h.01M16 20h.01" />
         </>
       );
       break;
@@ -150,14 +150,14 @@ export function WeatherIcon({ code, isDay, animated = false }: { code: number; i
       body = (
         <>
           <path d="M19 16.9A5 5 0 0 0 18 7h-1.26a8 8 0 1 0-11.62 9" />
-          <path className={cn(sunCls, a('animate-wx-flash'))} d="M13 11l-4 6h6l-4 6" />
+          <path className={classNames(sunCls, a('animate-weather-flash'))} d="M13 11l-4 6h6l-4 6" />
         </>
       );
       break;
   }
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"
-         strokeLinejoin="round" aria-hidden="true" className="wx size-full overflow-visible">
+         strokeLinejoin="round" aria-hidden="true" className="weather-icon size-full overflow-visible">
       {body}
     </svg>
   );
