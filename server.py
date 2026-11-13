@@ -232,9 +232,11 @@ class Keeper(threading.Thread):
     MIN_RECAST = 45     # never cast more often than this
     BEAT_TIMEOUT = 75   # page is considered dead without a heartbeat this long
     TAKEOVER_DELAY = 6  # let a voice-started Spotify session begin before moving it
-    # The Hub puts its own screen over a running Cast app after about 10
-    # minutes; the app keeps running (and beating) underneath. Launching it
-    # again does not bring it back, so after this long hidden it is re-cast.
+    # The Hub puts its own screen over a Cast app with no media loaded about
+    # 10 minutes after it starts; the app keeps running (and beating)
+    # underneath. The page keeps an image loaded as Cast media to prevent
+    # this. If it is covered anyway, launching it again does not bring it
+    # back, so after this long hidden it is closed and re-cast.
     HIDDEN_GRACE = 30
 
     def __init__(self) -> None:

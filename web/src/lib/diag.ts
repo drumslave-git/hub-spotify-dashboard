@@ -7,6 +7,8 @@ import { isCast, loadedAt, params } from './env';
 /** What the page is doing, kept up to date by the app; sent with each beat. */
 export const diag = {
   castState: 'pending',
+  // The still image kept loaded as Cast media: loads that worked, last error.
+  media: { loads: 0, error: '' },
   touches: 0,
   stageScale: 1,
   view: 'home' as 'home' | 'playing',
@@ -66,6 +68,7 @@ export function beat(event?: string) {
   const body: Record<string, unknown> = {
     up: Math.round((Date.now() - loadedAt) / 1000),
     cast: diag.castState,
+    media: diag.media,
     touches: diag.touches,
     input,
     layers: foreignLayers(),
@@ -113,11 +116,61 @@ export function beat(event?: string) {
 // ------------------------------------------------------------ cast receiver
 // On the Hub, registering as a Cast receiver with the idle timeout disabled
 // is what stops the device from dropping back to its ambient screen.
+type Obj = Record<string, unknown>;
+interface CastContext {
+  addEventListener(t: unknown, cb: () => void): void;
+  start(o: unknown): void;
+  getPlayerManager(): { load(req: unknown): Promise<unknown> | void };
+}
 interface CastFramework {
-  CastReceiverContext: { getInstance(): { addEventListener(t: unknown, cb: () => void): void; start(o: unknown): void } };
-  CastReceiverOptions: new () => Record<string, unknown>;
-  ui: { UiConfig: new () => Record<string, unknown> };
-  system: { EventType: Record<string, unknown> };
+  CastReceiverContext: { getInstance(): CastContext };
+  CastReceiverOptions: new () => Obj;
+  ui: { UiConfig: new () => Obj };
+  system: { EventType: Obj };
+  messages: {
+    LoadRequestData: new () => Obj;
+    MediaInformation: new () => Obj;
+    GenericMediaMetadata: new () => Obj;
+    StreamType: Obj;
+  };
+}
+
+// Even so, the Hub puts its home screen over an app that has no media loaded
+// 10 minutes after it starts (and closes it 10 minutes later); the server then
+// had to re-cast the page, with the Hub's cast chime each time. Home
+// Assistant's receiver keeps a still image loaded in a hidden player and
+// loads it again every 9 minutes; this does the same.
+const MEDIA_EVERY = 9 * 60 * 1000;
+
+function keepMediaLoaded(fw: CastFramework, ctx: CastContext) {
+  const player = document.createElement('cast-media-player');
+  player.style.display = 'none';
+  document.body.append(player);
+  const manager = ctx.getPlayerManager();
+  const load = () => {
+    const failed = (e: unknown) => {
+      diag.media.error = String((e as { message?: string })?.message ?? JSON.stringify(e));
+      beat('media-failed: ' + diag.media.error);
+    };
+    try {
+      const media = new fw.messages.MediaInformation();
+      media.contentId = new URL('keepalive.png', location.href).href;
+      media.contentType = 'image/png';
+      media.streamType = fw.messages.StreamType.NONE;
+      const meta = new fw.messages.GenericMediaMetadata();
+      meta.title = 'Kitchen display';
+      media.metadata = meta;
+      const req = new fw.messages.LoadRequestData();
+      req.autoplay = true;
+      req.media = media;
+      req.requestId = 0;
+      Promise.resolve(manager.load(req)).then(() => {
+        if (!diag.media.loads++) beat('media-loaded');
+      }, failed);
+    } catch (e) { failed(e); }
+  };
+  const ready = fw.system.EventType.READY;
+  ctx.addEventListener(ready, () => { load(); setInterval(load, MEDIA_EVERY); });
 }
 
 function startCast() {
@@ -137,6 +190,7 @@ function startCast() {
         ui.touchScreenOptimizedApp = true;
         o.uiConfig = ui;
       } catch { /* older receiver framework */ }
+      keepMediaLoaded(fw, ctx);
       for (const name of ['READY', 'SHUTDOWN', 'SENDER_CONNECTED', 'SENDER_DISCONNECTED', 'ERROR']) {
         const type = fw.system.EventType[name];
         if (type) ctx.addEventListener(type, () => beat('cast:' + name));
