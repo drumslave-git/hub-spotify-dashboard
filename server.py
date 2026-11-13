@@ -226,6 +226,10 @@ class Keeper(threading.Thread):
     MIN_RECAST = 45     # never cast more often than this
     BEAT_TIMEOUT = 75   # page is considered dead without a heartbeat this long
     TAKEOVER_DELAY = 6  # let a voice-started Spotify session begin before moving it
+    # The Hub puts its own screen over a running Cast app after about 10
+    # minutes; the app keeps running (and beating) underneath. Launching it
+    # again does not bring it back, so after this long hidden it is re-cast.
+    HIDDEN_GRACE = 30
 
     def __init__(self) -> None:
         super().__init__(daemon=True, name="keeper")
@@ -237,6 +241,7 @@ class Keeper(threading.Thread):
         self.last_cast = 0.0
         self.last_beat = 0.0
         self.beat: dict = {}
+        self.hidden_since: float | None = None   # page reported itself covered
         self.events: list[str] = []
 
     def note(self, text: str) -> None:
@@ -254,6 +259,24 @@ class Keeper(threading.Thread):
             if beat.get(key) is not None:
                 parts.append(f"{key} {json.dumps(beat[key], separators=(',', ':'))}")
         return ", ".join(parts)
+
+    def page_beat(self, beat: dict) -> None:
+        """A heartbeat from the page on the Hub."""
+        self.last_beat = time.time()
+        self.beat = beat
+        if beat.get("visible") == "hidden":
+            self.hidden_since = self.hidden_since or self.last_beat
+        else:
+            self.hidden_since = None
+
+    def covered_too_long(self, now: float) -> bool:
+        """The page has reported itself hidden for HIDDEN_GRACE seconds, and is
+        still beating (a dead page is the stale check's job)."""
+        return bool(
+            self.hidden_since
+            and now - self.hidden_since >= self.HIDDEN_GRACE
+            and now - self.last_beat < self.BEAT_TIMEOUT
+        )
 
     def run(self) -> None:
         while True:
@@ -311,6 +334,15 @@ class Keeper(threading.Thread):
                             f"(last beat: {self.beat_summary()})"
                         )
                         cast.quit_app()  # the idle branch re-casts a few seconds later
+                    elif self.covered_too_long(now):
+                        self.state = "covered"
+                        self.note(
+                            f"hub covered the page for {now - self.hidden_since:.0f}s; "
+                            "closing it to re-cast"
+                        )
+                        self.hidden_since = None
+                        cast.quit_app()
+                        hurry = True
                     else:
                         self.state = "showing"
                 else:
@@ -333,6 +365,7 @@ class Keeper(threading.Thread):
     def _cast(self, cast, dash: DashCastController, why: str) -> None:
         self.casts += 1
         self.last_cast = time.time()
+        self.hidden_since = None
         self.note(f"casting dashboard ({why})")
         if CONFIG["cast_app_id"]:
             # Your own Cast app: Google loads its registered receiver address.
@@ -523,8 +556,7 @@ class Handler(BaseHTTPRequestHandler):
             if "CrKey" in str(beat.get("ua", "")):
                 if not keeper.last_beat:
                     keeper.note(f"first heartbeat from hub: {json.dumps(beat)}")
-                keeper.last_beat = time.time()
-                keeper.beat = beat
+                keeper.page_beat(beat)
             if beat.get("event"):
                 keeper.note(f"page event from {beat['from']}: {beat['event']}")
             self._json({"ok": True})

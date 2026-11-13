@@ -47,6 +47,26 @@ class BeatSummaryTests(unittest.TestCase):
         keeper.beat = {"up": 30}
         self.assertEqual(keeper.beat_summary(), "0s ago, page up 30s")
 
+    def test_covered_page_is_recast_after_the_grace(self):
+        keeper = self.server.Keeper()
+        keeper.page_beat({"visible": "hidden"})
+        now = time.time()
+        self.assertFalse(keeper.covered_too_long(now + 5))
+        keeper.last_beat = now + keeper.HIDDEN_GRACE   # still beating while covered
+        self.assertTrue(keeper.covered_too_long(now + keeper.HIDDEN_GRACE + 1))
+
+    def test_visible_beat_clears_the_cover(self):
+        keeper = self.server.Keeper()
+        keeper.page_beat({"visible": "hidden"})
+        keeper.page_beat({"visible": "visible"})
+        self.assertIsNone(keeper.hidden_since)
+        self.assertFalse(keeper.covered_too_long(time.time() + 600))
+
+    def test_hidden_page_that_stopped_beating_is_left_to_the_stale_check(self):
+        keeper = self.server.Keeper()
+        keeper.page_beat({"visible": "hidden"})
+        self.assertFalse(keeper.covered_too_long(time.time() + keeper.BEAT_TIMEOUT + 1))
+
 
 if __name__ == "__main__":
     unittest.main()
