@@ -128,9 +128,14 @@ class SpotifyTests(unittest.TestCase):
             "item": {"name": "Voice", "uri": "spotify:track:v", "artists": []},
             "device": {"id": "hub", "name": "Kitchen display"},
         }
+        before = time.time() - 1
         self.sp.expect_takeover()
         self.api.player = None            # the Hub's Spotify app was closed
-        self.sp.set_local_device("dash")  # page reports in -> transfer starts
+        # The page that was closed for the Hub's Spotify app still counts as
+        # listening for a moment: that must not start the move.
+        self.sp.set_local_device("dash", listening_since=before)
+        self.assertEqual(self.api.starts(), [])
+        self.sp.set_local_device("dash", listening_since=time.time() + 1)  # re-cast page listens
         for _ in range(50):
             if any(c[1] == "/me/player/play" for c in self.api.calls):
                 break
@@ -142,6 +147,32 @@ class SpotifyTests(unittest.TestCase):
         self.assertEqual(plays[0][3]["context_uri"], "spotify:album:a1")
         self.assertEqual(plays[0][3]["offset"], {"uri": "spotify:track:v"})
         self.assertEqual(self.sp._takeover_until, 0)  # one-shot
+
+    def test_takeover_tries_again_when_the_music_does_not_start(self):
+        self.api.player = {
+            "is_playing": True, "progress_ms": 1000, "context": None,
+            "item": {"name": "Voice", "uri": "spotify:track:v", "artists": []},
+            "device": {"id": "hub", "name": "Kitchen display"},
+        }
+        notes = []
+        self.sp.note = notes.append
+        self.sp.expect_takeover()
+        real = self.api.__call__
+        stalled = {"left": 1}
+
+        def api(method, path, query=None, body=None):
+            status, payload = real(method, path, query, body)
+            if path == "/me/player/play" and stalled["left"]:
+                stalled["left"] -= 1
+                self.api.player = None    # accepted, then nothing plays
+            return status, payload
+
+        self.sp._api = api
+        self.sp._local_id = "dash"
+        self.sp._transfer_to_local()
+        plays = [c for c in self.api.calls if c[1] == "/me/player/play"]
+        self.assertEqual(len(plays), 2)
+        self.assertIn("takeover: music continues on the dashboard", notes)
 
     @staticmethod
     def played(name, context=None, album="spotify:album:" + "a1"):

@@ -325,6 +325,7 @@ spotify = Spotify(
     CONFIG["spotify"]["redirect_uri"],
     Path(CONFIG["data_dir"]) / "spotify.json",
     CONFIG["spotify"]["device"],
+    note=keeper.note,
 )
 
 
@@ -338,7 +339,7 @@ def link_player() -> None:
     while True:
         time.sleep(3)
         if local.ready and local.hub.listeners:
-            spotify.set_local_device(local.device_id)
+            spotify.set_local_device(local.device_id, listening_since=local.hub.joined)
 
 
 def test_tone() -> None:

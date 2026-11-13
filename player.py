@@ -56,6 +56,10 @@ class AudioHub:
         self._lock = threading.Lock()
         self.bytes_in = 0
         self.last_audio = 0.0
+        # When the newest listener joined. A page that has gone away still
+        # counts as a listener until a write to it fails (up to ~20 s), so
+        # this tells a freshly loaded page from one that is closing.
+        self.joined = 0.0
 
     @property
     def listeners(self) -> int:
@@ -65,6 +69,7 @@ class AudioHub:
         q: queue.Queue = queue.Queue(self.BACKLOG)
         with self._lock:
             self._listeners.add(q)
+            self.joined = time.time()
         return q
 
     def unsubscribe(self, q: queue.Queue) -> None:

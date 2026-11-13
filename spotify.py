@@ -56,8 +56,10 @@ def _http(method: str, url: str, headers: dict | None = None, data: bytes | None
 
 
 class Spotify:
-    def __init__(self, client_id: str, redirect_uri: str, store: Path, device: str = "") -> None:
+    def __init__(self, client_id: str, redirect_uri: str, store: Path, device: str = "",
+                 note=log.info) -> None:
         self.client_id = client_id
+        self.note = note  # for events worth seeing on /api/debug
         self.redirect_uri = redirect_uri
         self.preferred_device = device
         self._store = store
@@ -75,6 +77,7 @@ class Spotify:
         self._local_id: str | None = None
         self._local_at = 0.0
         self._takeover_until = 0.0
+        self._takeover_at = 0.0
         self._handoff: dict | None = None
         # What Spotify granted at sign-in (None until a token response says).
         self._scope: set[str] | None = None
@@ -447,13 +450,20 @@ class Spotify:
         listening to its sound."""
         return bool(self._local_id) and time.time() - self._local_at < 60
 
-    def set_local_device(self, device_id: str | None) -> None:
+    def set_local_device(self, device_id: str | None, listening_since: float | None = None) -> None:
         """Called every few seconds with the player's Spotify device id while
-        it is ready and being listened to."""
+        it is ready and being listened to; `listening_since` is when the
+        newest listener joined (None: unknown, taken as now)."""
+        now = time.time()
         with self._lock:
             self._local_id = device_id or None
-            self._local_at = time.time()
-            pending = bool(device_id) and time.time() < self._takeover_until
+            self._local_at = now
+            # A takeover waits for a page that started listening after it
+            # began: the page that was closed for the Hub's Spotify app still
+            # counts as listening for a few seconds, and moving the music
+            # while that app is still closing gets it stopped again.
+            fresh = (now if listening_since is None else listening_since) > self._takeover_at
+            pending = bool(device_id) and now < self._takeover_until and fresh
             if pending:
                 self._takeover_until = 0.0
         if pending:
@@ -470,6 +480,7 @@ class Spotify:
         what is playing, so it can continue on the dashboard's player as soon
         as the page is listening again."""
         self._handoff = None
+        self._takeover_at = time.time()
         status, p = self._api("GET", "/me/player", {"additional_types": "track,episode"})
         if status == 200 and p and p.get("item"):
             self._handoff = {
@@ -477,6 +488,10 @@ class Spotify:
                 "context_uri": (p.get("context") or {}).get("uri"),
                 "position_ms": p.get("progress_ms") or 0,
             }
+            seconds = self._handoff["position_ms"] // 1000
+            self.note(f"takeover: noted {p['item'].get('name') or 'the track'} at {seconds // 60}:{seconds % 60:02d}")
+        else:
+            self.note(f"takeover: could not see what plays ({status}); will resume the last music")
         self._takeover_until = time.time() + 90
 
     def _transfer_to_local(self) -> None:
@@ -484,6 +499,7 @@ class Spotify:
         for attempt in range(5):
             device_id = self._local_id
             if not device_id:
+                self.note("takeover: the dashboard's player went away; not moving the music")
                 return
             if handoff and handoff.get("uri") and attempt < 2:
                 # Continue the exact track and position that was playing.
@@ -498,11 +514,19 @@ class Spotify:
                     "PUT", "/me/player", body={"device_ids": [device_id], "play": True}
                 )
             if status in (200, 202, 204):
-                log.info("spotify: playback moved to the dashboard")
+                # Spotify accepts a move before it happens; make sure it did.
+                time.sleep(2.5)
+                status, p = self._api("GET", "/me/player")
+                device = ((p or {}).get("device") or {}).get("id") if status == 200 else None
                 self._state_at = 0
-                return
-            log.info("spotify: move to dashboard not accepted yet (%s), retrying", status)
+                if device == device_id and (p or {}).get("is_playing"):
+                    self.note("takeover: music continues on the dashboard")
+                    return
+                self.note(f"takeover: accepted but not playing on the dashboard (try {attempt + 1}), again")
+            else:
+                self.note(f"takeover: move to the dashboard refused ({status}), again")
             time.sleep(2)
+        self.note("takeover: gave up moving the music to the dashboard")
         self.error = "Could not move the music to the dashboard."
 
     # -------------------------------------------------------------- controls

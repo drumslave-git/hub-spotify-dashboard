@@ -997,7 +997,11 @@
       if (active && !p.playing) note(p.device ? 'Paused on ' + p.device : 'Paused');
       // Music is meant to come out of this device, but the browser holds the
       // sound back until the screen is touched.
-      if (active && p.playing && p.on_dashboard && soundBlocked()) note('Tap the screen to hear it here', true);
+      // Ask anyway first: some Hubs let sound start without a touch.
+      if (active && p.playing && p.on_dashboard && soundBlocked()) {
+        unlockSound();
+        note('Tap the screen to hear it here', true);
+      }
     }
     drawNote();
 
