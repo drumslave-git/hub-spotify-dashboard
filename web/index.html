@@ -49,11 +49,36 @@
     overflow: hidden;
     font-variant-numeric: tabular-nums;
   }
-  .view { position: absolute; top: 0; right: 0; bottom: 0; left: 0; transition: opacity 0.45s, visibility 0s; }
-  /* Music playing: the now-playing view takes the screen. */
-  .np { opacity: 0; visibility: hidden; transition: opacity 0.45s, visibility 0s 0.45s, background-color 0.8s; }
-  body.np-on .np { opacity: 1; visibility: visible; transition: opacity 0.45s, visibility 0s, background-color 0.8s; }
-  body.np-on .home { opacity: 0; visibility: hidden; transition: opacity 0.45s, visibility 0s 0.45s; }
+  .view { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
+  /* Music playing: the now-playing view takes the screen. The bar and the
+     player's panel are one tinted surface (.morph, under both views): it grows
+     from the bar into the panel while the home view fades out, then the
+     player's words fade in on it. Stopping runs the same way back. */
+  .morph {
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+    background: var(--tint);
+    /* The bar's place on the home view (.home padding, .bar height). */
+    clip-path: inset(468px 32px 28px 32px round 26px);
+    transition: clip-path 0.6s cubic-bezier(0.65, 0, 0.35, 1) 0.15s, background-color 0.8s;
+  }
+  /* The panel's place on the player view (.np's first column). */
+  body.np-on .morph { clip-path: inset(0px 0px 0px 400px round 0px); transition: clip-path 0.6s cubic-bezier(0.65, 0, 0.35, 1), background-color 0.8s; }
+  /* Back home the clock comes straight back; the bar's words wait for the bar. */
+  .home-left { transition: opacity 0.4s 0.15s; }
+  .home-right { transition: opacity 0.4s 0.45s; }
+  .bar { transition: opacity 0.3s 0.6s; }
+  body.np-on .home { visibility: hidden; transition: visibility 0s 0.25s; }
+  body.np-on .home-left, body.np-on .home-right, body.np-on .bar { opacity: 0; transition: opacity 0.25s; }
+  .np { visibility: hidden; transition: visibility 0s 0.25s; }
+  .np-info, .np-panel > * { opacity: 0; transition: opacity 0.25s, transform 0.25s; }
+  .np-panel > * { transform: translateY(14px); }
+  body.np-on .np { visibility: visible; transition: none; }
+  body.np-on .np-info { opacity: 1; transition: opacity 0.45s 0.25s; }
+  body.np-on .np-panel > * { opacity: 1; transform: none; transition: opacity 0.4s 0.45s, transform 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) 0.45s; }
+  @media (prefers-reduced-motion: reduce) {
+    .morph, body.np-on .morph { transition: background-color 0.8s; }
+    .np-panel > * { transform: none; }
+  }
 
   svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   svg.wx { width: 100%; height: 100%; stroke-width: 1.5; overflow: visible; }
@@ -201,8 +226,7 @@
   .bar {
     height: 104px; flex: none; padding: 16px; border-radius: 26px;
     display: flex; align-items: center; gap: 16px;
-    background: var(--tint); color: #fff;
-    transition: background-color 0.8s;
+    color: #fff;   /* its background is .morph, under it */
   }
   .art { background: rgba(255,255,255,0.1) center / cover no-repeat; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.35); }
   .art.has-art svg { display: none; }
@@ -230,8 +254,7 @@
   .np-panel {
     position: relative; padding: 28px; min-width: 0;
     display: flex; flex-direction: column; justify-content: space-between;
-    background: var(--tint); color: #fff;
-    transition: background-color 0.8s;
+    color: #fff;   /* its background is .morph, under it */
   }
   .np-panel > * { position: relative; z-index: 1; }
   .np-top { display: flex; gap: 24px; height: 264px; }
@@ -339,6 +362,7 @@
     <div class="stars" id="stars"><i></i><i></i><i></i></div>
     <div class="precip" id="precip"><i></i><i></i></div>
   </div>
+  <div class="morph"></div>
   <section class="view home" id="home">
     <div class="home-top">
       <div class="home-left" id="info">
