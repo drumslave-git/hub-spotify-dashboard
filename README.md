@@ -11,6 +11,13 @@ shows the sun's path today. While music plays here, a soft spectrum in the
 cover's colour moves with it and the cover breathes with the bass. The night
 clock shows the moon's phase and the next sunrise.
 
+| | |
+|---|---|
+| ![Morning: clock, partly cloudy weather, the sun's arc, rain forecast and the last song ready to resume](docs/screenshots/day.png) | ![Golden hour while music plays: weather on the left, the player in the cover's colour on the right](docs/screenshots/playing.png) |
+| *Morning, with rain on the way and the last song ready to resume* | *Golden hour, music playing on the dashboard* |
+| ![Rain falling across the sky beside a paused song](docs/screenshots/rain.png) | ![Night clock with the moon's phase and the next sunrise](docs/screenshots/night.png) |
+| *Rain now; a song paused on another device* | *Night: a dim clock, the moon's phase, the next sunrise* |
+
 - `server.py` serves the page, fetches weather (Open-Meteo), and runs the
   keeper: whenever the Hub is idle it casts the page, and re-casts if the page
   stops reporting in. Other Cast apps are left alone; the dashboard returns
@@ -88,6 +95,13 @@ default when the dashboard's address is plain http, for running locally).
 2. In the same console add the Hub as a test device by serial number, wait
    until it shows as ready, then restart the Hub.
 3. Set `CAST_APP_ID` to the app ID.
+
+## Screenshots
+
+The pictures above come from `python tools/screenshots.py`, which serves the
+page with made-up weather for London and captures it in headless Chrome at the
+Hub's 1024x600. Run it after any change to how the page looks and commit the
+new images with that change.
 
 ## Releases
 
@@ -197,3 +211,7 @@ sound path (open `http://localhost:8765/?player=1`).
 
 `tools/discover.py` lists Cast devices on the network and
 `tools/status.py <hub-ip>` prints what the Hub is running.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

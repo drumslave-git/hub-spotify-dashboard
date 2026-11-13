@@ -22,6 +22,7 @@ data
 # Not needed in the image
 tests
 tools
+docs
 VERSION
 docker-compose.yml
 *.md

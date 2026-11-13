@@ -527,6 +527,13 @@
     if (tz) opts.timeZone = tz;
     var parts = {};
     new Intl.DateTimeFormat('en-GB', opts).formatToParts(d).forEach(function (p) { parts[p.type] = p.value; });
+    var at = /^(\d\d?):(\d\d)$/.exec(params.get('at') || '');
+    if (at) {   // ?at=HH:MM shows that hour on the clock too (sky and clock agree)
+      var h = +at[1] % 24;
+      parts.hour = hour12 ? String((h + 11) % 12 + 1) : ('0' + h).slice(-2);
+      parts.minute = at[2];
+      parts.dayPeriod = h < 12 ? 'am' : 'pm';
+    }
     var key = parts.hour + parts.minute;
     if (key !== lastMinute) {
       lastMinute = key;
@@ -638,7 +645,7 @@
   // ------------------------------------------------------------------ sky
   // The background follows the real sky: night, blue hour, dawn, day, golden
   // hour, sunset and dusk, timed from today's sunrise and sunset and greyed
-  // by clouds. ?at=HH:MM shows the sky (not the clock) at another hour and
+  // by clouds. ?at=HH:MM shows the sky and the clock at another hour and
   // ?wx=CODE other weather, for trying it out.
   var weatherNow = null, skyInfo = {}, nightShown = '';
   var SKY = {   // top, middle, bottom of the screen
