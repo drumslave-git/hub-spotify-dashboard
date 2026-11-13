@@ -59,7 +59,28 @@
   svg.wx { width: 100%; height: 100%; stroke-width: 1.5; overflow: visible; }
   svg.wx .sun { stroke: var(--warm); }
   svg.wx .drop { stroke: var(--cool); }
-  svg.wx .cover { fill: var(--bg); }
+  svg.wx .cover { fill: var(--cover, var(--bg)); }
+
+  /* The big weather icon moves a little: rays turn, clouds drift, rain falls. */
+  @keyframes wx-spin { to { transform: rotate(360deg); } }
+  @keyframes wx-glow { from { transform: scale(0.88); } to { transform: scale(1.08); } }
+  @keyframes wx-drift { from { transform: translateX(-0.6px); } to { transform: translateX(0.8px); } }
+  @keyframes wx-rock { from { transform: rotate(-7deg); } to { transform: rotate(5deg); } }
+  @keyframes wx-dash { to { stroke-dashoffset: -6; } }
+  @keyframes wx-fall { 0% { transform: translateY(-1.5px); opacity: 0; } 30%, 70% { opacity: 1; } 100% { transform: translateY(2.5px); opacity: 0; } }
+  @keyframes wx-flash { 0%, 84%, 89%, 100% { opacity: 1; } 86% { opacity: 0.15; } 91% { opacity: 0.3; } }
+  .now-icon .rays { transform-origin: 12px 12px; animation: wx-spin 48s linear infinite; }
+  .now-icon .rays-s { transform-origin: 17px 7.5px; animation: wx-glow 3.2s ease-in-out infinite alternate; }
+  .now-icon .drift { animation: wx-drift 5s ease-in-out infinite alternate; }
+  .now-icon .moon { transform-origin: 12px 12px; animation: wx-rock 7s ease-in-out infinite alternate; }
+  .now-icon .moon-s { transform-origin: 17px 6px; animation: wx-rock 7s ease-in-out infinite alternate; }
+  .now-icon .dash { stroke-dasharray: 3.5 2.5; animation: wx-dash 0.7s linear infinite; }
+  .now-icon .fall { animation: wx-fall 1.6s ease-in infinite; }
+  .now-icon .fall.slow { animation-duration: 2.8s; animation-timing-function: linear; }
+  .now-icon .fall.late { animation-delay: -0.8s; }
+  .now-icon .fall.slow.late { animation-delay: -1.4s; }
+  .now-icon .bolt { animation: wx-flash 4.5s infinite; }
+  @media (prefers-reduced-motion: reduce) { .now-icon svg * { animation: none !important; } }
 
   /* ------------------------------------------------------------- buttons */
   button {
@@ -92,6 +113,58 @@
   .main:active, .go:active { background: #fff; }
   /* A press is on its way to Spotify: further presses wait for it. */
   body.busy .big, body.busy .main, body.busy .go { opacity: 0.5; }
+
+  /* ----------------------------------------------------------------- sky
+     Behind the time and weather: the colours of the real sky at this hour,
+     from the sunrise and sunset of the day (see drawSky), greyed by clouds,
+     with stars at night and falling rain or snow when it does. */
+  .sky { position: absolute; top: 0; right: 0; bottom: 0; left: 0; overflow: hidden; background: var(--bg); }
+  .sky-glow {
+    position: absolute; left: 0; top: 0; width: 820px; height: 820px; margin: -410px 0 0 -410px;
+    border-radius: 50%; background: radial-gradient(closest-side, var(--glow, #ffb070), transparent);
+    opacity: 0; transition: opacity 2s;
+  }
+  .stars { position: absolute; top: 0; left: 0; width: 1024px; height: 600px; opacity: 0; transition: opacity 2s; }
+  .stars i { position: absolute; left: 0; top: 0; width: 1px; height: 1px; border-radius: 50%; background: transparent; animation: twinkle 6s ease-in-out infinite alternate; }
+  .stars i:nth-child(2) { width: 2px; height: 2px; animation-duration: 8.5s; animation-delay: -3s; }
+  .stars i:nth-child(3) { width: 1.5px; height: 1.5px; animation-duration: 4.5s; animation-delay: -1s; }
+  @keyframes twinkle { from { opacity: 1; } to { opacity: 0.35; } }
+  .precip i {
+    position: absolute; left: 0; right: 0; top: -300px; height: 900px;
+    background-repeat: repeat; will-change: transform; opacity: 0;
+  }
+  .precip.rain i:nth-child(1) { opacity: 0.9; background-image: var(--rain1); animation: rain1 0.55s linear infinite; }
+  .precip.rain i:nth-child(2) { opacity: 0.6; background-image: var(--rain2); animation: rain2 0.9s linear infinite; }
+  .precip.light i:nth-child(1) { opacity: 0.5; }
+  .precip.light i:nth-child(2) { opacity: 0.3; }
+  .precip.snow i:nth-child(1) { opacity: 0.85; background-image: var(--snow1); animation: snow1 10s linear infinite; }
+  .precip.snow i:nth-child(2) { opacity: 0.55; background-image: var(--snow2); animation: snow2 16s linear infinite; }
+  @keyframes rain1 { to { transform: translateY(200px); } }
+  @keyframes rain2 { to { transform: translateY(300px); } }
+  @keyframes snow1 { 50% { transform: translate(12px, 100px); } 100% { transform: translate(0, 200px); } }
+  @keyframes snow2 { 50% { transform: translate(-16px, 150px); } 100% { transform: translate(0, 300px); } }
+  @media (prefers-reduced-motion: reduce) { .sky * { animation: none !important; } }
+
+  /* On the sky, greys become see-through white so they read on any colour. */
+  .home, .np-info {
+    --muted: rgba(255,255,255,0.66);
+    --line: rgba(255,255,255,0.2);
+    --raised: rgba(255,255,255,0.16);
+    text-shadow: 0 1px 14px rgba(0,0,0,0.22);
+  }
+  .home .time .colon, .np-info .time .colon { color: rgba(255,255,255,0.4); }
+  .bar, .np-panel { text-shadow: none; }
+
+  /* The sun's path today: where it is now, sunrise and sunset under the ends. */
+  .sunarc { margin-bottom: auto; color: var(--muted); font-size: 15px; }
+  .sunarc svg { display: block; width: 340px; height: 96px; overflow: visible; }
+  .sunarc .path { stroke: rgba(255,255,255,0.3); stroke-width: 1.5; stroke-dasharray: 2 5; }
+  .sunarc .done { stroke: var(--warm); stroke-width: 2.5; }
+  .sunarc .horizon { stroke: rgba(255,255,255,0.22); stroke-width: 1; }
+  .sunarc .dot { fill: var(--warm); stroke: none; }
+  .sunarc .halo { fill: var(--warm); stroke: none; opacity: 0.25; }
+  .sun-times { margin-top: 6px; display: flex; justify-content: space-between; white-space: nowrap; }
+  .sun-times b { color: var(--text); font-weight: 400; }
 
   /* ------------------------------------- home: time, weather, resume bar */
   .home { padding: 30px 32px 28px; display: flex; flex-direction: column; gap: 22px; }
@@ -142,7 +215,7 @@
   .bar-sub.alert { color: var(--warm); }
 
   /* ----------------- now playing: time and weather left, a cover-tinted panel right */
-  .np { display: grid; grid-template-columns: 400px 624px; background: var(--bg); }
+  .np { display: grid; grid-template-columns: 400px 624px; }
   .np-info { padding: 30px 28px 28px 32px; display: flex; flex-direction: column; justify-content: space-between; min-width: 0; }
   .np-info .time { font-size: 128px; line-height: 0.88; letter-spacing: -0.045em; }
   .np-info .date { margin-top: 16px; font-size: 21px; }
@@ -155,13 +228,24 @@
   .np-info .fc-row { height: 38px; }
 
   .np-panel {
-    padding: 28px; min-width: 0;
+    position: relative; padding: 28px; min-width: 0;
     display: flex; flex-direction: column; justify-content: space-between;
     background: var(--tint); color: #fff;
     transition: background-color 0.8s;
   }
+  .np-panel > * { position: relative; z-index: 1; }
   .np-top { display: flex; gap: 24px; height: 264px; }
   .np .art { width: 264px; height: 264px; flex: none; border-radius: 12px; box-shadow: 0 18px 40px rgba(0,0,0,0.4); }
+  /* The music, seen: the cover breathes with the bass, light glows behind it,
+     and the spectrum rises softly behind the controls (drawMusic). */
+  .art-wrap { position: relative; width: 264px; height: 264px; flex: none; }
+  .art-wrap .art { position: relative; will-change: transform; }
+  .art-glow {
+    position: absolute; top: -48px; right: -48px; bottom: -48px; left: -48px;
+    border-radius: 50%; background: radial-gradient(closest-side, var(--tint-hi), transparent);
+    opacity: 0; will-change: transform, opacity;
+  }
+  .np-panel > .viz { position: absolute; left: 0; bottom: 0; z-index: 0; width: 624px; height: 170px; pointer-events: none; }
   .np .art svg { width: 80px; height: 80px; stroke-width: 1.2; }
   .np-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
   .np-note { font-size: 15px; color: rgba(255,255,255,0.7); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -236,6 +320,11 @@
   .night-clock .time .colon { color: #2e3034; }
   .night-clock .date { color: #33363a; font-size: 4.6vh; }
   .night-clock .date b { color: #4a4d52; }
+  .night-sky { margin-top: 4.5vh; display: flex; align-items: center; gap: 1.6vh; color: #33363a; font-size: 3.6vh; }
+  .night-sky svg { width: 5vh; height: 5vh; stroke: none; }
+  .night-sky .dark { fill: #121314; stroke: #222427; stroke-width: 0.6; }
+  .night-sky .lit { fill: #4a4d52; }
+  .night-sky b { color: #4a4d52; font-weight: 400; }
   body.night { background: #000; }
   body.night .night-clock { display: flex; }
   body.night .stage { visibility: hidden; }
@@ -245,6 +334,11 @@
 </head>
 <body>
 <div class="stage" id="stage">
+  <div class="sky" id="sky">
+    <div class="sky-glow" id="skyGlow"></div>
+    <div class="stars" id="stars"><i></i><i></i><i></i></div>
+    <div class="precip" id="precip"><i></i><i></i></div>
+  </div>
   <section class="view home" id="home">
     <div class="home-top">
       <div class="home-left" id="info">
@@ -262,6 +356,16 @@
         </div>
       </div>
       <div class="home-right">
+        <div class="sunarc" id="sunArc" hidden>
+          <svg viewBox="0 0 340 96" aria-hidden="true">
+            <line class="horizon" x1="0" y1="88" x2="340" y2="88"/>
+            <path class="path" d="M20 88 A150 76 0 0 1 320 88"/>
+            <path class="done" id="sunDone" d=""/>
+            <circle class="halo" id="sunHalo" r="13" cx="-50" cy="-50"/>
+            <circle class="dot" id="sunDot" r="6.5" cx="-50" cy="-50"/>
+          </svg>
+          <div class="sun-times"><span id="sunRise"></span><span id="sunMid"></span><span id="sunSet"></span></div>
+        </div>
         <div class="rain" id="rain" hidden>
           <div class="rain-text" id="rainText"></div>
           <div class="rain-bars" id="rainBars"></div>
@@ -305,8 +409,9 @@
     </div>
 
     <div class="np-panel" id="side">
+      <canvas class="viz" id="viz" width="624" height="170"></canvas>
       <div class="np-top">
-        <div class="art" id="pArt"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+        <div class="art-wrap"><div class="art-glow" id="artGlow"></div><div class="art" id="pArt"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div></div>
         <div class="np-meta">
           <div class="np-note" id="pNote"></div>
           <div class="np-title" id="pTitle"></div>
@@ -349,6 +454,7 @@
 <div class="night-clock" id="night">
   <div class="time" id="nightTime"></div>
   <div class="date" id="nightDate"></div>
+  <div class="night-sky" id="nightSky"></div>
 </div>
 <div class="stale" id="stale" hidden>offline</div>
 
@@ -365,12 +471,15 @@
   function $(id) { return document.getElementById(id); }
 
   // ---------------------------------------------------------------- icons
-  var SUN = '<g class="sun"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></g>';
-  var MOON = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
-  var CLOUD = '<path class="cover" d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>';
-  var SMALL_SUN = '<g class="sun"><circle cx="17" cy="7.5" r="3.4"/><path d="M17 1.2v1.3M22 7.5h1.3M11.9 2.4l.9.9M21.2 3.3l.9-.9"/></g>';
-  var SMALL_MOON = '<path transform="translate(11.5 0) scale(.5)" vector-effect="non-scaling-stroke" d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
-  var LOW_CLOUD = '<g transform="translate(0 4.6) scale(.82)"><path class="cover" vector-effect="non-scaling-stroke" d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></g>';
+  // Parts carry classes the big icon animates (rays, drift, moon, dash, fall,
+  // bolt). An element with a transform attribute is wrapped, because a CSS
+  // animation would replace that attribute.
+  var SUN = '<g class="sun"><circle cx="12" cy="12" r="5"/><path class="rays" d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></g>';
+  var MOON = '<path class="moon" d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  var CLOUD = '<g class="drift"><path class="cover" d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></g>';
+  var SMALL_SUN = '<g class="sun"><circle cx="17" cy="7.5" r="3.4"/><path class="rays-s" d="M17 1.2v1.3M22 7.5h1.3M11.9 2.4l.9.9M21.2 3.3l.9-.9"/></g>';
+  var SMALL_MOON = '<g class="moon-s"><path transform="translate(11.5 0) scale(.5)" vector-effect="non-scaling-stroke" d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></g>';
+  var LOW_CLOUD = '<g class="drift"><g transform="translate(0 4.6) scale(.82)"><path class="cover" vector-effect="non-scaling-stroke" d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></g></g>';
   var RAIN_TOP = '<path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/>';
   var ICONS = {
     clearDay: SUN,
@@ -378,11 +487,11 @@
     partlyDay: SMALL_SUN + LOW_CLOUD,
     partlyNight: SMALL_MOON + LOW_CLOUD,
     cloudy: CLOUD,
-    fog: RAIN_TOP + '<path d="M7 19.5h11M9.5 23h6"/>',
-    drizzle: RAIN_TOP + '<path class="drop" d="M8 19v2M8 13v2M16 19v2M16 13v2M12 21v2M12 15v2"/>',
-    rain: RAIN_TOP + '<path class="drop" d="M16 13v8M8 13v8M12 15v8"/>',
-    snow: '<path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25"/><path class="drop" d="M8 16h.01M8 20h.01M12 18h.01M12 22h.01M16 16h.01M16 20h.01"/>',
-    thunder: '<path d="M19 16.9A5 5 0 0 0 18 7h-1.26a8 8 0 1 0-11.62 9"/><path class="sun" d="M13 11l-4 6h6l-4 6"/>'
+    fog: RAIN_TOP + '<path class="drift" d="M7 19.5h11"/><path class="drift" style="animation-delay:-2.5s" d="M9.5 23h6"/>',
+    drizzle: RAIN_TOP + '<path class="drop fall" d="M8 13v2M16 19v2M12 15v2"/><path class="drop fall late" d="M8 19v2M16 13v2M12 21v2"/>',
+    rain: RAIN_TOP + '<path class="drop dash" d="M16 13v8M8 13v8M12 15v8"/>',
+    snow: '<path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25"/><path class="drop fall slow" d="M8 16h.01M12 18h.01M16 16h.01"/><path class="drop fall slow late" d="M8 20h.01M12 22h.01M16 20h.01"/>',
+    thunder: '<path d="M19 16.9A5 5 0 0 0 18 7h-1.26a8 8 0 1 0-11.62 9"/><path class="sun bolt" d="M13 11l-4 6h6l-4 6"/>'
   };
 
   function kind(code, isDay) {
@@ -432,6 +541,7 @@
       $('nightDate').innerHTML = $('date').innerHTML;
       $('npTime').innerHTML = $('time').innerHTML;
       $('npDate').innerHTML = $('date').innerHTML;
+      drawSky();
     }
     applyNight(d);
     $('stale').hidden = !lastOk || Date.now() - lastOk < 5 * 60 * 1000;
@@ -456,6 +566,8 @@
 
   // -------------------------------------------------------------- weather
   function renderWeather(w) {
+    weatherNow = w;
+    drawSky();
     if (!w) return;
     $('nowIcon').innerHTML = icon(w.code, w.is_day);
     $('nowTemp').textContent = deg(w.temp);
@@ -523,6 +635,219 @@
       : '';
   }
 
+  // ------------------------------------------------------------------ sky
+  // The background follows the real sky: night, blue hour, dawn, day, golden
+  // hour, sunset and dusk, timed from today's sunrise and sunset and greyed
+  // by clouds. ?at=HH:MM shows the sky (not the clock) at another hour and
+  // ?wx=CODE other weather, for trying it out.
+  var weatherNow = null, skyInfo = {}, nightShown = '';
+  var SKY = {   // top, middle, bottom of the screen
+    night:   ['#04060c', '#0a1122', '#151d35'],
+    blue:    ['#0a1230', '#1d2756', '#3b3d72'],
+    dawn:    ['#1a2858', '#634878', '#c47862'],
+    morning: ['#163e6c', '#2f6195', '#6b8fb4'],
+    day:     ['#10335d', '#22548a', '#3b6fa0'],
+    golden:  ['#18365f', '#5f5a73', '#b0764a'],
+    sunset:  ['#181d44', '#5f3560', '#ad5049'],
+    dusk:    ['#0c1230', '#252352', '#463359']
+  };
+  function rgb(c) { return [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)]; }
+  function mix(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+  function css(c) { return 'rgb(' + c.map(Math.round).join(',') + ')'; }
+
+  // Today's date and the minute of the day where the dashboard is.
+  function localNow() {
+    var opts = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+    if (tz) opts.timeZone = tz;
+    var p = {};
+    new Intl.DateTimeFormat('en-GB', opts).formatToParts(new Date(Date.now() + offset))
+      .forEach(function (x) { p[x.type] = x.value; });
+    var min = (+p.hour % 24) * 60 + +p.minute;
+    var at = /^(\d\d?):(\d\d)$/.exec(params.get('at') || '');
+    if (at) min = +at[1] * 60 + +at[2];
+    return { date: p.year + '-' + p.month + '-' + p.day, min: min };
+  }
+  function minutes(iso) { return +iso.slice(11, 13) * 60 + +iso.slice(14, 16); }
+  function fmtMin(m) {
+    var h = Math.floor(m / 60) % 24, mm = ('0' + (m % 60)).slice(-2);
+    return hour12 ? ((h + 11) % 12 + 1) + ':' + mm + (h < 12 ? ' am' : ' pm') : ('0' + h).slice(-2) + ':' + mm;
+  }
+  function dur(m) {
+    var h = Math.floor(m / 60);
+    return (h ? h + ' h ' : '') + (m % 60) + ' min';
+  }
+  function sunToday(w, now) {
+    var days = (w && w.days) || [];
+    for (var i = 0; i < days.length; i++) {
+      if (days[i].date === now.date && days[i].sunrise && days[i].sunset) {
+        return { rise: minutes(days[i].sunrise), set: minutes(days[i].sunset), next: days[i + 1] };
+      }
+    }
+    return null;
+  }
+
+  function skyAt(m, rise, set) {
+    var noon = (rise + set) / 2;
+    var keys = [
+      [rise - 90, 'night'], [rise - 40, 'blue'], [rise + 5, 'dawn'],
+      [Math.min(rise + 60, noon), 'morning'], [Math.min(rise + 150, noon), 'day'],
+      [Math.max(set - 150, noon), 'day'], [Math.max(set - 60, noon), 'golden'],
+      [set, 'sunset'], [set + 35, 'dusk'], [set + 90, 'night']
+    ];
+    for (var i = 1; i < keys.length; i++) {
+      var a = keys[i - 1], b = keys[i];
+      if (m >= a[0] && m < b[0]) {
+        var t = b[0] > a[0] ? (m - a[0]) / (b[0] - a[0]) : 1;
+        t = t * t * (3 - 2 * t);   // ease, so a phase lingers before the next
+        return { name: t < 0.5 ? a[1] : b[1], cols: [0, 1, 2].map(function (k) { return mix(rgb(SKY[a[1]][k]), rgb(SKY[b[1]][k]), t); }) };
+      }
+    }
+    return { name: 'night', cols: SKY.night.map(rgb) };
+  }
+
+  // How much the clouds grey the sky, and what falls from it.
+  function overcast(code) {
+    if (code == null || code <= 1) return 0;
+    if (code === 2) return 0.25;
+    if (code === 3) return 0.6;
+    if (code === 45 || code === 48) return 0.7;
+    if (code >= 95) return 0.75;
+    return 0.62;
+  }
+  function falling(code) {
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
+    if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82) || code >= 95) return 'rain';
+    if (code >= 51 && code <= 57) return 'rain light';
+    return '';
+  }
+  function grey(c, amount) {
+    var l = (0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]) * (1 - amount * 0.25);
+    return mix(c, [l * 0.94, l * 0.98, l * 1.08], amount);
+  }
+
+  // Patterns for rain and snow, each layer sliding down by one tile.
+  (function makeSky() {
+    var seed = 11;
+    function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+    function tile(size, body) {
+      return 'url("data:image/svg+xml,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '">' + body + '</svg>') + '")';
+    }
+    function streaks(size, n, len, alpha, width) {
+      var out = '';
+      for (var i = 0; i < n; i++) {
+        var l = len[0] + rnd() * (len[1] - len[0]), x = (4 + rnd() * (size - 8)).toFixed(1), y = (rnd() * (size - l)).toFixed(1);
+        out += '<line x1="' + x + '" y1="' + y + '" x2="' + x + '" y2="' + (+y + l).toFixed(1) +
+          '" stroke="rgba(214,228,255,' + alpha + ')" stroke-width="' + width + '" stroke-linecap="round"/>';
+      }
+      return tile(size, out);
+    }
+    function flakes(size, n, r, alpha) {
+      var out = '';
+      for (var i = 0; i < n; i++) {
+        var rr = r[0] + rnd() * (r[1] - r[0]);
+        out += '<circle cx="' + (rr + rnd() * (size - 2 * rr)).toFixed(1) + '" cy="' + (rr + rnd() * (size - 2 * rr)).toFixed(1) +
+          '" r="' + rr.toFixed(1) + '" fill="rgba(255,255,255,' + alpha + ')"/>';
+      }
+      return tile(size, out);
+    }
+    var sky = $('precip').style;
+    sky.setProperty('--rain1', streaks(200, 9, [16, 26], 0.42, 1.3));
+    sky.setProperty('--rain2', streaks(300, 8, [28, 42], 0.28, 1));
+    sky.setProperty('--snow1', flakes(200, 9, [1.8, 2.8], 0.85));
+    sky.setProperty('--snow2', flakes(300, 16, [1, 1.7], 0.6));
+    // Stars, more of them high up: three sizes, each twinkling at its own pace.
+    [].forEach.call(document.querySelectorAll('#stars i'), function (el) {
+      var list = [];
+      for (var i = 0; i < 26; i++) {
+        list.push(Math.round(rnd() * 1024) + 'px ' + Math.round(rnd() * rnd() * 430) + 'px 0 rgba(255,255,255,' + (0.4 + rnd() * 0.55).toFixed(2) + ')');
+      }
+      el.style.boxShadow = list.join(',');
+    });
+  })();
+
+  // Days since the last new moon, as a part of the moon's cycle (0 = new, 0.5 = full).
+  function moonPhase() {
+    var p = ((Date.now() + offset - Date.UTC(2000, 0, 6, 18, 14)) / 86400000 / 29.530588853) % 1;
+    return p < 0 ? p + 1 : p;
+  }
+  function moonName(p) {
+    return p < 0.03 || p > 0.97 ? 'New moon' : p < 0.22 ? 'Waxing crescent' : p < 0.28 ? 'First quarter'
+      : p < 0.47 ? 'Waxing gibbous' : p < 0.53 ? 'Full moon' : p < 0.72 ? 'Waning gibbous'
+      : p < 0.78 ? 'Last quarter' : 'Waning crescent';
+  }
+  // The moon as seen from the northern hemisphere: the lit edge, then the
+  // shadow line back, an ellipse as wide as the phase makes it.
+  function moonIcon(p) {
+    var k = (10 * Math.abs(Math.cos(2 * Math.PI * p))).toFixed(2);
+    var waxing = p < 0.5, crescent = p < 0.25 || p > 0.75;
+    var d = 'M12 2A10 10 0 0 ' + (waxing ? 1 : 0) + ' 12 22A' + k + ' 10 0 0 ' + (waxing === crescent ? 0 : 1) + ' 12 2z';
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle class="dark" cx="12" cy="12" r="10"/><path class="lit" d="' + d + '"/></svg>';
+  }
+
+  function drawSky() {
+    var w = weatherNow, now = localNow(), sun = sunToday(w, now);
+    var rise = sun ? sun.rise : 7 * 60, set = sun ? sun.set : 17 * 60;
+    var sky = skyAt(now.min, rise, set), cloud = overcast(w && w.code);
+    var cols = sky.cols.map(function (c) { return grey(c, cloud); });
+    $('sky').style.background = 'linear-gradient(180deg,' + css(cols[0]) + ' 0%,' + css(cols[1]) + ' 55%,' + css(cols[2]) + ' 100%)';
+    // A cloud in a weather icon is filled with the sky around it, a touch lighter.
+    $('stage').style.setProperty('--cover', css(mix(mix(cols[1], cols[2], 0.4), [255, 255, 255], 0.08)));
+
+    // The sun's glow, low and warm at the ends of the day, pale at noon.
+    var f = (now.min - rise) / (set - rise), glow = 0;
+    if (f > -0.06 && f < 1.06) {
+      var h = Math.sin(Math.PI * Math.max(0, Math.min(1, f)));
+      $('skyGlow').style.transform = 'translate(' + Math.round(1024 * (0.04 + 0.92 * f)) + 'px,' + Math.round(640 - 520 * h) + 'px)';
+      $('sky').style.setProperty('--glow', css(mix([255, 168, 100], [255, 240, 214], h)));
+      glow = (0.4 - 0.22 * h) * (1 - cloud * 0.8);
+    }
+    $('skyGlow').style.opacity = glow.toFixed(2);
+    var dark = Math.max(0, Math.min(1, Math.max((rise - 20 - now.min) / 40, (now.min - set - 20) / 40)));
+    $('stars').style.opacity = (dark * Math.max(0, 1 - cloud * 1.4)).toFixed(2);
+    var fall = w ? falling(w.code) : '';
+    $('precip').className = 'precip ' + fall;
+
+    // The sun's path, above the rain and forecast.
+    $('sunArc').hidden = !sun;
+    var nextRise = null;
+    if (sun) {
+      var up = f > 0 && f < 1, a = Math.PI * (1 - Math.max(0, Math.min(1, f)));
+      var x = (170 + 150 * Math.cos(a)).toFixed(1), y = (88 - 76 * Math.sin(a)).toFixed(1);
+      $('sunDone').setAttribute('d', up ? 'M20 88A150 76 0 0 1 ' + x + ' ' + y : '');
+      ['sunDot', 'sunHalo'].forEach(function (id) {
+        $(id).setAttribute('cx', up ? x : -50);
+        $(id).setAttribute('cy', up ? y : -50);
+      });
+      nextRise = now.min < rise ? rise : sun.next && sun.next.sunrise ? minutes(sun.next.sunrise) : null;
+      $('sunRise').innerHTML = '<b>' + fmtMin(rise) + '</b>';
+      $('sunSet').innerHTML = '<b>' + fmtMin(set) + '</b>';
+      $('sunMid').textContent = up
+        ? (set - now.min <= 150 ? 'Sunset in ' + dur(set - now.min) : dur(set - rise) + ' of daylight')
+        : nextRise == null ? 'After sunset'
+        : 'Sunrise in ' + dur(now.min < rise ? rise - now.min : 1440 - now.min + nextRise);
+    }
+
+    // The night clock: the moon tonight and when it gets light.
+    var phase = moonPhase();
+    var html = moonIcon(phase) + '<span>' + moonName(phase) +
+      (nextRise != null ? ' · sunrise <b>' + fmtMin(nextRise) + '</b>' : '') + '</span>';
+    if (html !== nightShown) { nightShown = html; $('nightSky').innerHTML = html; }
+
+    skyInfo = { sky: sky.name, cloud: cloud, falling: fall, moon: moonName(phase), sun: sun ? fmtMin(rise) + '-' + fmtMin(set) : null };
+  }
+
+  // ?wx=CODE and ?at=HH:MM: try other weather and hours on the real page.
+  function tryOut(w) {
+    if (!w) return w;
+    if (params.get('wx')) w.code = +params.get('wx');
+    if (params.get('at')) {
+      var now = localNow(), sun = sunToday(w, now);
+      if (sun) w.is_day = now.min >= sun.rise && now.min < sun.set ? 1 : 0;
+    }
+    return w;
+  }
+
   function refresh() {
     var sent = Date.now();
     fetch('/api/state', { cache: 'no-store' })
@@ -536,7 +861,7 @@
         version = s.version;
         lastOk = Date.now();
         lastMinute = null;
-        renderWeather(s.weather);
+        renderWeather(tryOut(s.weather));
         tick();
       })
       .catch(function () { /* keep showing the last data */ });
@@ -559,12 +884,13 @@
   // Android themes itself from a wallpaper); the page uses a deep tone of it
   // as the background and a light tone for the main buttons. A grey cover, or
   // one that can't be read, leaves the neutral grey.
-  var NEUTRAL = { tint: '#24272d', hi: '#eceef2' }, tints = {}, tintFor;
+  var NEUTRAL = { tint: '#24272d', hi: '#eceef2' }, tints = {}, tintFor, tintHi = NEUTRAL.hi;
 
   function applyTint(t) {
     var root = document.documentElement.style;
     root.setProperty('--tint', t.tint);
     root.setProperty('--tint-hi', t.hi);
+    tintHi = t.hi;
   }
 
   function coverTint(img) {
@@ -687,6 +1013,7 @@
     $('pDeviceName').textContent = (active && p.device) || 'Speakers';
 
     drawProgress();
+    startMusic();
   }
 
   function position(p) {
@@ -950,7 +1277,15 @@
     try { ctx = new AC({ sampleRate: RATE, latencyHint: 'playback' }); }
     catch (e) { ctx = new AC(); }
     gain = ctx.createGain();
-    gain.connect(ctx.destination);
+    // The analyser hears exactly what the speaker plays, so the picture
+    // keeps time with the sound (drawMusic).
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.7;
+    analyser.minDecibels = -85;
+    analyser.maxDecibels = -22;
+    gain.connect(analyser);
+    analyser.connect(ctx.destination);
     audio.rate = ctx.sampleRate;
     audio.state = ctx.state;
     ctx.onstatechange = function () {
@@ -1060,6 +1395,88 @@
   }
   function soundBlocked() { return audio.mode !== 'off' && audio.state !== 'running'; }
 
+  // ------------------------------------------------------ the music, seen
+  // While music plays here: a soft spectrum rises behind the controls, the
+  // cover breathes with the bass and light glows behind it, all in the
+  // cover's colour. About 30 frames a second, and only while it plays.
+  var analyser = null, bins = null, BARS = 40, shown = [], vizOn = false, vizLast = 0, vizFill = null, vizFor = '';
+  for (var b = 0; b < BARS; b++) shown.push(0);
+
+  function musicShows() {
+    var demo = params.get('demo');
+    return !!(player && player.active && player.playing &&
+      document.body.classList.contains('np-on') && !document.body.classList.contains('night') &&
+      (demo || (analyser && player.on_dashboard && ctx.state === 'running')));
+  }
+  function startMusic() {
+    if (vizOn || !musicShows()) return;
+    vizOn = true;
+    requestAnimationFrame(drawMusic);
+  }
+  function stopMusic() {
+    vizOn = false;
+    for (var i = 0; i < BARS; i++) shown[i] = 0;
+    $('viz').getContext('2d').clearRect(0, 0, 624, 170);
+    $('artGlow').style.opacity = 0;
+    $('pArt').style.transform = '';
+  }
+
+  function levelsNow(t) {
+    var out = [];
+    if (!analyser) {   // demo page: a made-up song at 120 beats a minute
+      var kick = Math.exp(-((t / 500) % 1) * 5);
+      for (var j = 0; j < BARS; j++) {
+        var v = 0.5 + 0.22 * Math.sin(t / 390 + j * 0.45) + 0.14 * Math.sin(t / 160 + j * 1.9);
+        out.push(Math.max(0, v * (1 - j / BARS * 0.55) * (j < 6 ? 0.55 + kick * 0.6 : 0.85)));
+      }
+      return out;
+    }
+    if (!bins) bins = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(bins);
+    var hz = ctx.sampleRate / analyser.fftSize;
+    for (var i = 0; i < BARS; i++) {
+      // Bands spaced the way we hear: as many bars for 50-100 Hz as for 5-10 kHz.
+      var lo = 45 * Math.pow(14000 / 45, i / BARS), hi = 45 * Math.pow(14000 / 45, (i + 1) / BARS);
+      var a = Math.floor(lo / hz), z = Math.max(a + 1, Math.ceil(hi / hz)), sum = 0;
+      for (var k = a; k < z; k++) sum += bins[k];
+      var level = sum / (z - a) / 255 * (0.9 + 0.3 * i / BARS);   // highs are quieter: lift them a little
+      out.push(Math.pow(Math.max(0, (level - 0.12) / 0.88), 1.5));
+    }
+    return out;
+  }
+
+  function drawMusic(t) {
+    if (!musicShows()) { stopMusic(); return; }
+    requestAnimationFrame(drawMusic);
+    if (t - vizLast < 32) return;
+    vizLast = t;
+    var levels = levelsNow(t);
+    for (var i = 0; i < BARS; i++) shown[i] = levels[i] > shown[i] ? levels[i] : Math.max(0, shown[i] - 0.03);
+
+    var g = $('viz').getContext('2d'), W = 624, H = 170, gap = 6, bw = (W - gap * (BARS + 1)) / BARS;
+    var hi = tintHi;
+    if (hi !== vizFor || !vizFill) {
+      var c = rgb(/^#[0-9a-f]{6}$/i.test(hi) ? hi : NEUTRAL.hi);
+      vizFill = g.createLinearGradient(0, H, 0, 0);
+      vizFill.addColorStop(0, 'rgba(' + c.join(',') + ',0.05)');
+      vizFill.addColorStop(1, 'rgba(' + c.join(',') + ',0.24)');
+      vizFor = hi;
+    }
+    g.clearRect(0, 0, W, H);
+    g.fillStyle = vizFill;
+    g.beginPath();
+    for (i = 0; i < BARS; i++) {
+      var h = Math.max(3, shown[i] * (H - 6)), x = gap + i * (bw + gap);
+      if (g.roundRect) g.roundRect(x, H - h, bw, h + 4, [3, 3, 0, 0]); else g.rect(x, H - h, bw, h);
+    }
+    g.fill();
+
+    var bass = Math.min(1, (shown[0] + shown[1] + shown[2] + shown[3] + shown[4]) / 5 * 1.3);
+    $('artGlow').style.opacity = (0.12 + bass * 0.5).toFixed(3);
+    $('artGlow').style.transform = 'scale(' + (0.9 + bass * 0.16).toFixed(3) + ')';
+    $('pArt').style.transform = 'scale(' + (1 + bass * 0.022).toFixed(4) + ')';
+  }
+
   // ------------------------------------------------------------ heartbeat
   function beat(event) {
     var home = $('home'), side = $('side');
@@ -1085,6 +1502,8 @@
       player: !player ? 'none' : !player.connected ? 'not-connected' : player.active
         ? (player.playing ? 'playing' : 'paused') + ':' + player.device : 'idle',
       audio: Object.assign({}, audio, { kb: Math.round(audio.kb), played: Math.round(audio.played) }),
+      sky: skyInfo,
+      viz: vizOn,
       ua: navigator.userAgent
     };
     if (event) body.event = event;

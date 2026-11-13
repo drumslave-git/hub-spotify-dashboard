@@ -135,7 +135,7 @@ class Weather:
                 "is_day,wind_speed_10m,relative_humidity_2m",
                 "hourly": "temperature_2m,weather_code,precipitation_probability,precipitation,is_day",
                 "daily": "weather_code,temperature_2m_max,temperature_2m_min,"
-                "precipitation_probability_max",
+                "precipitation_probability_max,sunrise,sunset",
                 "timezone": CONFIG["timezone"],
                 "forecast_days": 4,
                 "wind_speed_unit": "ms",
@@ -178,6 +178,9 @@ class Weather:
                 "max": daily["temperature_2m_max"][i],
                 "min": daily["temperature_2m_min"][i],
                 "rain": daily["precipitation_probability_max"][i],
+                # local times, "YYYY-MM-DDTHH:MM": the page's sky follows them
+                "sunrise": daily["sunrise"][i],
+                "sunset": daily["sunset"][i],
             }
             for i in range(len(daily["time"]))
         ]

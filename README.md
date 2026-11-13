@@ -4,6 +4,13 @@ Keeps a custom page on a Google Nest Hub instead of its ambient screen:
 time, date, weather and the rain forecast for the next hours on the left, a
 Spotify player on the right.
 
+Behind the time and weather is the sky as it is outside: its colours follow
+today's sunrise and sunset (dawn, day, golden hour, dusk, night), clouds grey
+it, rain or snow falls across it, and stars come out on clear nights. An arc
+shows the sun's path today. While music plays here, a soft spectrum in the
+cover's colour moves with it and the cover breathes with the bass. The night
+clock shows the moon's phase and the next sunrise.
+
 - `server.py` serves the page, fetches weather (Open-Meteo), and runs the
   keeper: whenever the Hub is idle it casts the page, and re-casts if the page
   stops reporting in. Other Cast apps are left alone; the dashboard returns
@@ -152,6 +159,9 @@ Only one instance may point at a Hub; two would keep re-casting over each other.
 
 - `http://<server>:8765/` shows the page in a browser. Add `?demo=playing` or
   `?demo=idle` to see the player states without Spotify.
+  `?at=HH:MM` shows the sky at another hour (the clock stays real) and
+  `?wx=<code>` other weather (an Open-Meteo weather code: 0 clear, 3 overcast,
+  63 rain, 73 snow, 95 thunder), e.g. `?demo=idle&at=16:00&wx=0`.
 - `http://<server>:8765/api/debug` shows the keeper state, the Hub's last
   heartbeat (including the layout it measured on its own screen), the player
   state, and recent events.
