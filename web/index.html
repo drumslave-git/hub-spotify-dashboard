@@ -1009,6 +1009,7 @@
       // Ask anyway first: some Hubs let sound start without a touch.
       if (active && p.playing && p.on_dashboard && soundBlocked()) {
         unlockSound();
+        reloadForSound();
         note('Tap the screen to hear it here', true);
       }
     }
@@ -1308,6 +1309,7 @@
     analyser.connect(ctx.destination);
     audio.rate = ctx.sampleRate;
     audio.state = ctx.state;
+    reportSoundReload();
     ctx.onstatechange = function () {
       audio.state = ctx.state;
       beat('audio:' + ctx.state);
@@ -1415,6 +1417,30 @@
   }
   function soundBlocked() { return audio.mode !== 'off' && audio.state !== 'running'; }
 
+  // The Hub holds back the sound of a freshly cast page until the screen is
+  // touched (as after "Hey Google": the dashboard is cast again), yet a page
+  // that reloads itself has been seen playing straight away. So when music is
+  // meant to come out here and the sound is held, reload once; at most every
+  // ten minutes, in case it doesn't help. /api/debug shows how it went.
+  var RELOAD_KEY = 'hubdash.soundReload';
+  function reloadForSound() {
+    if (touches || reloading || !/CrKey/.test(navigator.userAgent) || Date.now() - loadedAt < 3000) return;
+    try {
+      if (Date.now() - (+sessionStorage.getItem(RELOAD_KEY) || 0) < 600000) return;
+      sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+    } catch (e) { return; }
+    reloading = true;
+    beat('sound-reload');
+    setTimeout(function () { location.reload(); }, 300);
+  }
+  var reloading = false;
+  function reportSoundReload() {
+    try {
+      if (Date.now() - (+sessionStorage.getItem(RELOAD_KEY) || 0) > 60000) return;
+    } catch (e) { return; }
+    setTimeout(function () { beat('after-sound-reload:' + audio.state); }, 2000);
+  }
+
   // ------------------------------------------------------ the music, seen
   // While music plays here: a soft spectrum rises behind the controls, the
   // cover breathes with the bass and light glows behind it, all in the
@@ -1504,7 +1530,7 @@
   // and re-cast the page. Only a beat sent as the page goes away uses
   // keepalive. `sent` reports how beats fare and how much keepalive went out.
   var sent = { ok: 0, failed: 0, error: '', keepalive: 0, keepaliveBytes: 0 };
-  var LEAVING = /^(visibility:hidden|cast:SHUTDOWN|pagehide|freeze)/;
+  var LEAVING = /^(visibility:hidden|cast:SHUTDOWN|pagehide|freeze|sound-reload)/;
   function postBeat(json, keepalive) {
     if (keepalive) { sent.keepalive++; sent.keepaliveBytes += json.length; }
     return fetch('/api/beat', { method: 'POST', body: json, keepalive: keepalive })
