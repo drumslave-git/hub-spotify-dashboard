@@ -54,9 +54,11 @@ streamed to the page, which plays it through the Hub's speaker.
 - If Spotify's own app starts on the Hub (for example after "Hey Google,
   play..."), the service notes the track and position, closes that app, re-casts
   the dashboard and continues the music there (`VOICE_TAKEOVER`).
-- The Hub refuses to start sound from a page until the screen is touched.
-  Pressing play is such a touch. Music started any other way waits for one tap
-  after the dashboard (re)loads, unless your own Cast app lifts that rule.
+- The Hub holds back the sound of a freshly cast page until the screen is
+  touched, but lets a page that reloads itself play at once. So when music
+  should come out of the dashboard (after "Hey Google", or picked from a
+  phone) and the sound is held, the page reloads itself once, which takes
+  about a second, and the music is heard without a tap.
 - Pause and skip reach the speaker about half a second later, because the
   sound travels server -> page.
 - Spotify Premium is required (a rule of Spotify's web player).
