@@ -551,6 +551,7 @@ class Handler(BaseHTTPRequestHandler):
                     "beat": keeper.beat,
                     "player": spotify.state(),
                     "spotify_errors": list(spotify.errors),
+                    "spotify_refused_until": spotify.limits(),
                     "local": local.debug(),
                     "events": keeper.events,
                 }

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import collections
+import datetime
 import hashlib
 import json
 import logging
@@ -40,6 +41,24 @@ SCOPES = (
 LIKED = "liked"
 LIKED_MAX = 300
 
+# How long, in seconds, Spotify's answer about what plays is kept. The page
+# asks the server every 2 s, but every request to Spotify counts against a
+# quota for the developer account, and asking every 2-5 s around the clock
+# used it up (2026-11-16: refused for over 20 minutes). So Spotify is asked
+# again when the song should have ended, and otherwise only now and then, to
+# catch a pause or skip made somewhere else. A press on the dashboard asks
+# at once.
+PLAYING_FOR = 15
+PAUSED_FOR = 30
+IDLE_FOR = 30
+
+# A 429 with a short Retry-After is the rate limit (a rolling 30 s window for
+# the whole app), so every request waits. A long one means a used-up quota,
+# which Spotify counts per group of endpoints, so only the refused endpoint
+# waits: a used-up "is this song liked" must not take play and pause down
+# with it.
+SHORT_WAIT = 120
+
 
 def _http(method: str, url: str, headers: dict | None = None, data: bytes | None = None):
     req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
@@ -68,7 +87,9 @@ class Spotify:
         self._access: str | None = None
         self._expires = 0.0
         self._pending: dict[str, str] = {}      # login state -> PKCE verifier
-        self._backoff_until = 0.0
+        self._backoff_until = 0.0               # every request waits (rate limit)
+        self._blocked: dict[str, float] = {}    # endpoint -> refused until (quota)
+        self._refused_until = 0.0               # of the latest 429, for messages
         self._state: dict | None = None
         self._state_at = 0.0
         self._last: dict | None = None
@@ -218,11 +239,19 @@ class Spotify:
 
     # ------------------------------------------------------------------- api
 
+    @staticmethod
+    def _endpoint(method: str, path: str) -> str:
+        """The endpoint a request goes to (one playlist stands for all)."""
+        return method + " " + ("/playlists/{id}" if path.startswith("/playlists/") else path)
+
     def _api(self, method: str, path: str, query: dict | None = None, body: dict | None = None):
         token = self._token()
         if not token:
             return 0, None
-        if time.time() < self._backoff_until:
+        endpoint = self._endpoint(method, path)
+        until = max(self._backoff_until, self._blocked.get(endpoint, 0.0))
+        if time.time() < until:
+            self._refused_until = until
             return 429, None
         url = API + path + ("?" + urllib.parse.urlencode(query) if query else "")
         headers = {"Authorization": "Bearer " + token}
@@ -233,15 +262,58 @@ class Spotify:
         elif method in ("PUT", "POST"):
             data = b""
         status, payload, hdrs = _http(method, url, headers, data)
-        if status == 429:
-            wait = int(hdrs.get("Retry-After", "5") or 5)
-            self._backoff_until = time.time() + wait
-            log.warning("spotify: rate limited, backing off %ss", wait)
         if status >= 400:
-            message = ((payload or {}).get("error") or {}) if isinstance(payload, dict) else {}
-            message = message.get("message") if isinstance(message, dict) else message
-            self.errors.append(f"{time.strftime('%H:%M:%S')} {method} {path} -> {status} {message or ''}".strip())
+            error = ((payload or {}).get("error") or {}) if isinstance(payload, dict) else {}
+            message = (error.get("message") if isinstance(error, dict) else error) or ""
+            if status == 429:
+                message += self._refused(endpoint, hdrs, error if isinstance(error, dict) else {})
+            self.errors.append(f"{time.strftime('%H:%M:%S')} {method} {path} -> {status} {message}".strip())
         return status, payload
+
+    def _refused(self, endpoint: str, hdrs, error: dict) -> str:
+        """Wait as long as Spotify asks after a 429. Returns what to add to
+        the error list."""
+        try:
+            wait = max(1, int(hdrs.get("Retry-After") or 5))
+        except (TypeError, ValueError):
+            wait = 5
+        reason = error.get("reason") or ""
+        until = time.time() + wait
+        self._refused_until = until
+        if wait > SHORT_WAIT or reason == "QUOTA_EXCEEDED":
+            self._blocked[endpoint] = until
+            self.note(f"spotify: {endpoint} refused for {wait}s "
+                      f"({reason or 'too many requests'}), until {self._when(until)}")
+        else:
+            self._backoff_until = until
+            log.warning("spotify: rate limited, every request waits %ss", wait)
+        return f" (wait {wait}s{', ' + reason if reason else ''})"
+
+    @staticmethod
+    def _when(moment: float) -> str:
+        """A time to show on screen, with the day when it is not today."""
+        clock = time.strftime("%H:%M", time.localtime(moment))
+        days = (datetime.date.fromtimestamp(moment) - datetime.date.today()).days
+        if days == 0:
+            return clock
+        if days == 1:
+            return "tomorrow " + clock
+        return time.strftime("%d %b ", time.localtime(moment)) + clock
+
+    def limits(self) -> dict[str, str]:
+        """What Spotify refuses for now, and until when (for /api/debug)."""
+        now = time.time()
+        out = {endpoint: self._when(until) for endpoint, until in self._blocked.items() if until > now}
+        if self._backoff_until > now:
+            out["every request"] = time.strftime("%H:%M:%S", time.localtime(self._backoff_until))
+        return out
+
+    def _refusal_note(self) -> str:
+        """Said on screen while Spotify will not say what plays."""
+        until = self._blocked.get("GET /me/player", 0.0)
+        if until - time.time() <= 0:
+            return ""
+        return f"Spotify stopped answering until {self._when(until)}: the dashboard asked too often."
 
     @property
     def needs_login(self) -> bool:
@@ -314,6 +386,19 @@ class Spotify:
             return {"context_uri": context, "offset": {"uri": track["uri"]}}
         return {"uris": [track["uri"]]}
 
+    def _fresh_for(self) -> float:
+        """Seconds the last answer about what plays is kept (see PLAYING_FOR)."""
+        known = self._state or {}
+        if not known.get("active"):
+            return IDLE_FOR
+        if not known.get("playing"):
+            return PAUSED_FOR
+        if not known.get("duration_ms"):
+            return PLAYING_FOR
+        # Ask again just after the song should have ended, to show the next.
+        left = (known["duration_ms"] - (known.get("progress_ms") or 0)) / 1000
+        return max(2.0, min(PLAYING_FOR, left + 1))
+
     def state(self) -> dict:
         base = {
             "configured": self.configured,
@@ -325,14 +410,14 @@ class Spotify:
         if not self.connected:
             return base
         with self._lock:
-            ttl = 2 if (self._state or {}).get("playing") else 5
-            if self._state is None or time.time() - self._state_at > ttl:
+            if self._state is None or time.time() - self._state_at > self._fresh_for():
                 self._state = self._fetch_state()
                 self._state_at = time.time()
             device_id = self._state.get("device_id")
             return {
                 **base,
                 **self._state,
+                "error": self.error or self._refusal_note(),
                 "on_dashboard": bool(device_id) and device_id == self._local_id,
             }
 
@@ -340,11 +425,12 @@ class Spotify:
 
     def _track_extras(self, uri: str | None) -> dict:
         """Whether the playing track is liked and what comes after it. Asked
-        once per track, and again now and then because the queue changes."""
+        once per track (each request counts against Spotify's quota); a
+        press on the dashboard that changes either asks again."""
         if not uri:
             return {"liked": None, "next": None}
         cached = self._extras
-        if cached.get("uri") != uri or time.time() - cached.get("at", 0) > 45:
+        if cached.get("uri") != uri:
             liked = cached.get("liked") if cached.get("uri") == uri else None
             status, p = self._api("GET", "/me/library/contains", {"uris": uri})
             if status == 200 and isinstance(p, list) and p:
@@ -577,12 +663,13 @@ class Spotify:
             return True, ""
         return False, self._reason(status, payload)
 
-    @staticmethod
-    def _reason(status: int, payload) -> str:
+    def _reason(self, status: int, payload) -> str:
         message = ((payload or {}).get("error") or {}).get("message") if isinstance(payload, dict) else ""
         if status == 403:
             return message or "Spotify refused (Premium is required for playback control)."
         if status == 429:
+            if self._refused_until - time.time() > SHORT_WAIT:
+                return f"Spotify refuses this until {self._when(self._refused_until)}: the dashboard asked too often."
             return "Spotify is rate limiting; try again in a moment."
         return message or f"Spotify error {status}"
 

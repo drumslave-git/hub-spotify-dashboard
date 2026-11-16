@@ -185,7 +185,11 @@ Only one instance may point at a Hub; two would keep re-casting over each other.
 - `http://<server>:8765/api/debug` shows the keeper state, the Hub's last
   heartbeat (including the layout it measured on its own screen), the player
   state, and recent events.
-  `spotify_errors` lists the latest requests Spotify refused.
+  `spotify_errors` lists the latest requests Spotify refused, and
+  `spotify_refused_until` the requests the server holds back because Spotify
+  said to wait (its quota for development-mode apps is counted per account,
+  so the server asks Spotify what plays only every 15 to 30 seconds, and
+  just after a song should end).
   Under `local` it shows the built-in player (`ready` when Chrome is signed
   in to Spotify, and how many pages are listening to its sound); under
   `beat.audio` it shows what the Hub's page is doing with that sound.

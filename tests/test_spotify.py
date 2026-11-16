@@ -354,10 +354,94 @@ class SpotifyTests(unittest.TestCase):
         again = mod.Spotify("cid", "http://127.0.0.1/cb", self.sp._store)
         self.assertTrue(again.connected)
 
+    def test_what_plays_is_asked_again_only_when_it_can_have_changed(self):
+        self.now_playing(item={"name": "song", "uri": "spotify:track:song", "duration_ms": 200000})
+        asked = lambda: sum(1 for c in self.api.calls if c[:2] == ("GET", "/me/player"))
+        self.sp.state()
+        self.sp._state_at = time.time() - 10
+        self.sp.state()
+        self.assertEqual(asked(), 1)  # mid-song: kept
+        self.sp._state_at = time.time() - mod.PLAYING_FOR - 1
+        self.sp.state()
+        self.assertEqual(asked(), 2)  # now and then, for a pause or skip elsewhere
+        self.api.player["progress_ms"] = 198000
+        self.sp._state_at = 0
+        self.sp.state()
+        self.sp._state_at = time.time() - 3.5
+        self.sp.state()
+        self.assertEqual(asked(), 4)  # just after the song should have ended
+        self.api.player = None
+        self.sp._state_at = 0
+        self.sp.state()
+        self.sp._state_at = time.time() - mod.IDLE_FOR + 5
+        self.sp.state()
+        self.assertEqual(asked(), 5)  # nothing plays: rarely
+
     def test_not_connected(self):
         self.sp._refresh = None
         self.assertEqual(self.sp.command("toggle"), (False, "Spotify is not connected."))
         self.assertFalse(self.sp.state()["connected"])
+
+
+class RefusalTests(unittest.TestCase):
+    """What happens when Spotify answers 429 (the real _api, a fake network)."""
+
+    def setUp(self):
+        self._http = mod._http
+        self.sent = []
+        self.refuse = {}  # path -> (Retry-After, reason)
+        mod._http = self.fake_http
+        self.notes = []
+        self.sp = mod.Spotify("cid", "http://127.0.0.1/cb", Path(tempfile.mkdtemp()) / "s.json",
+                              note=self.notes.append)
+        self.sp._refresh, self.sp._access, self.sp._expires = "refresh", "token", time.time() + 3600
+
+    def tearDown(self):
+        mod._http = self._http
+
+    def fake_http(self, method, url, headers=None, data=None):
+        path = url[len(mod.API):].split("?")[0]
+        self.sent.append((method, path))
+        if path in self.refuse:
+            wait, reason = self.refuse[path]
+            error = {"status": 429, "message": "Too many requests", **({"reason": reason} if reason else {})}
+            return 429, {"error": error}, {"Retry-After": str(wait)}
+        if path == "/me/player":
+            return 204, None, {}
+        return 200, {"items": []}, {}
+
+    def test_a_long_refusal_stops_only_that_endpoint(self):
+        self.refuse["/me/library/contains"] = (3 * 3600, "")
+        self.assertEqual(self.sp._api("GET", "/me/library/contains")[0], 429)
+        self.assertEqual(self.sp._api("GET", "/me/library/contains")[0], 429)
+        self.assertEqual(self.sent.count(("GET", "/me/library/contains")), 1)  # not asked again
+        self.assertEqual(self.sp._api("PUT", "/me/player/pause")[0], 200)     # play and pause still work
+        self.assertIn("GET /me/library/contains", self.sp.limits())
+        self.assertIn("wait 10800s", self.sp.errors[-1])
+        self.assertTrue(any("refused for 10800s" in n for n in self.notes))
+        self.sp._api("GET", "/me/library/contains")
+        self.assertIn("refuses this until", self.sp._reason(429, None))
+
+    def test_a_used_up_quota_stops_only_that_endpoint_even_when_short(self):
+        self.refuse["/me/player/queue"] = (30, "QUOTA_EXCEEDED")
+        self.sp._api("GET", "/me/player/queue")
+        self.assertEqual(self.sp._api("GET", "/me/player/recently-played")[0], 200)
+        self.assertEqual(list(self.sp.limits()), ["GET /me/player/queue"])
+
+    def test_a_short_refusal_makes_every_request_wait(self):
+        self.refuse["/me/player/queue"] = (5, "")
+        self.sp._api("GET", "/me/player/queue")
+        self.assertEqual(self.sp._api("GET", "/me/player/recently-played")[0], 429)
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn("in a moment", self.sp._reason(429, None))
+
+    def test_the_screen_says_when_spotify_will_not_say_what_plays(self):
+        self.refuse["/me/player"] = (7200, "")
+        self.assertIn("Spotify stopped answering until", self.sp.state()["error"])
+
+    def test_the_wait_is_shown_with_its_day(self):
+        self.assertNotIn(" ", self.sp._when(time.time()))
+        self.assertTrue(self.sp._when(time.time() + 86400).startswith("tomorrow "))
 
 
 if __name__ == "__main__":
