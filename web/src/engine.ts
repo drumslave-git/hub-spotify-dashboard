@@ -23,16 +23,23 @@ declare global {
 const name = new URLSearchParams(location.search).get('name') || 'Dashboard';
 let device: string | null = null;
 
+// Every reply is read to the end. Chrome keeps an unread reply's file open
+// until the page's memory is cleaned up, which in this quiet page is never:
+// at one report every 10 s, the container's limit of 1024 open files ran
+// out after 2 h 44 min, the reports stopped, and the server restarted the
+// player in the middle of the music.
 function report(event: string, message = '') {
   fetch('/api/engine', {
     method: 'POST',
     body: JSON.stringify({ event, device, message }),
-  }).catch(() => {});
+  })
+    .then((r) => r.text())
+    .catch(() => {});
 }
 
 function token(): Promise<string | null> {
   return fetch('/api/spotify/token', { cache: 'no-store' })
-    .then((r) => (r.ok ? r.json() : null))
+    .then((r) => (r.ok ? r.json() : r.text().then(() => null)))
     .then((d: { token?: string } | null) => d?.token ?? null)
     .catch(() => null);
 }

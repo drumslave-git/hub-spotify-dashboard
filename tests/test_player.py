@@ -139,6 +139,32 @@ class LocalPlayerTests(unittest.TestCase):
         local.report({"event": "error", "message": "initialization_error: nope"})
         self.assertEqual(local.message, "Spotify's player could not start")
 
+    def test_a_quiet_player_page_gets_a_restart(self):
+        local, _ = self.make()
+        now = 10_000.0
+        local.last_report = now - 30
+        self.assertEqual(local.stale(now - 500, now), "")
+        local.last_report = now - 61
+        self.assertEqual(local.stale(now - 500, now), "no word from the player page for 61 s")
+
+    def test_a_page_that_never_reported_counts_from_the_start(self):
+        local, _ = self.make()
+        now = 10_000.0
+        self.assertEqual(local.stale(now - 30, now), "")
+        self.assertIn("for 61 s", local.stale(now - 61, now))
+
+    def test_music_that_still_plays_is_not_cut_off(self):
+        local, notes = self.make()
+        now = 10_000.0
+        local.last_report = now - 90
+        local.hub.last_audio = now - 1
+        self.assertEqual(local.stale(now - 500, now), "")
+        self.assertEqual(local.stale(now - 500, now + 2), "")
+        self.assertEqual(len(notes), 1)  # said once, not every check
+        self.assertIn("restarting once the music stops", notes[0])
+        # The song ends; a minute of quiet later the restart goes ahead.
+        self.assertIn("no word", local.stale(now - 500, now + 62))
+
     def test_without_chrome_there_is_no_player(self):
         local, _ = self.make()
         local.chrome = None

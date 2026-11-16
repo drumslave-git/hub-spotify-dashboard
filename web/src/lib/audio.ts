@@ -68,7 +68,8 @@ function readStream() {
     setTimeout(readStream, 2000);
   }
   fetch('/api/audio', { cache: 'no-store' }).then((r) => {
-    if (!r.ok || !r.body) { again(); return; }
+    // An unread reply would hold a file open in the browser.
+    if (!r.ok || !r.body) { r.body?.cancel().catch(() => {}); again(); return; }
     audio.connected = true;
     const reader = r.body.getReader();
     // Not chained with return: an endless promise chain would never be freed.

@@ -105,7 +105,7 @@ export function heartbeat(event?: string) {
     if (keepalive || first) {
       body.sent = sent;
       if (first) body.event = (event ? event + '; ' : '') + 'beat-failed: ' + sent.error;
-      fetch('/api/beat', { method: 'POST', body: JSON.stringify(body) }).catch(() => {});
+      fetch('/api/beat', { method: 'POST', body: JSON.stringify(body) }).then((r) => r.text()).catch(() => {});
     }
   }
   try {

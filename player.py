@@ -147,6 +147,7 @@ class LocalPlayer(threading.Thread):
         self.device_id: str | None = None
         self.last_report = 0.0
         self.restarts = 0
+        self._spared = False   # a restart is being held off while music plays
 
     @property
     def enabled(self) -> bool:
@@ -197,6 +198,23 @@ class LocalPlayer(threading.Thread):
             self._note(f"player: playback error: {data.get('message')}")
         if (self.state, self.message) != before:
             self._note(f"player: {self.state}" + (f" ({data.get('message')})" if self.state == "error" else ""))
+
+    def stale(self, started: float, now: float) -> str:
+        """Why the player should be restarted, or "" while it is fine."""
+        age = now - (self.last_report or started)
+        if age <= self.STALE:
+            self._spared = False
+            return ""
+        if now - self.hub.last_audio <= self.STALE:
+            # The page has gone quiet but the music has not: Spotify's player
+            # (in its own frame) is plainly working, and a restart would cut
+            # the song off. Restart once it has been quiet for a while.
+            if not self._spared:
+                self._spared = True
+                self._note(f"player: no word from the player page for {int(age)} s; "
+                           "restarting once the music stops")
+            return ""
+        return f"no word from the player page for {int(age)} s"
 
     # --------------------------------------------------------------- processes
 
@@ -256,12 +274,13 @@ class LocalPlayer(threading.Thread):
                     **quiet))
                 self._note("player: started")
                 self.last_report = 0.0
+                self._spared = False
 
                 while all(p.poll() is None for p in procs):
                     time.sleep(2)
-                    age = time.time() - (self.last_report or started)
-                    if age > self.STALE:
-                        raise OSError(f"no word from the player page for {int(age)} s")
+                    reason = self.stale(started, time.time())
+                    if reason:
+                        raise OSError(reason)
                 raise OSError("a player process stopped")
             except OSError as err:
                 self._note(f"player: restarting ({err})")
