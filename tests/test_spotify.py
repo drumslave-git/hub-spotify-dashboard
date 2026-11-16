@@ -377,6 +377,64 @@ class SpotifyTests(unittest.TestCase):
         self.sp.state()
         self.assertEqual(asked(), 5)  # nothing plays: rarely
 
+    def dashboard_plays(self, **more):
+        """The dashboard's own player says what it plays."""
+        self.sp.set_local_device("dash")
+        self.sp.set_local_playback("dash", {
+            "playing": True, "position_ms": 61000, "duration_ms": 200000, "at": 1234,
+            "shuffle": True, "repeat": "context", "context_uri": "spotify:playlist:mix",
+            "device_name": "Dashboard",
+            "track": {"uri": "spotify:track:here", "name": "Here", "artists": [{"name": "A"}, {"name": "B"}],
+                      "album": {"uri": "spotify:album:al", "name": "Al",
+                                "images": [{"url": "small", "height": 64}, {"url": "mid", "height": 300},
+                                           {"url": "big", "height": 640}]}},
+            "next": {"title": "After", "artist": "C"},
+            **more,
+        })
+
+    def asked_player(self):
+        return sum(1 for c in self.api.calls if c[:2] == ("GET", "/me/player"))
+
+    def test_music_on_the_dashboard_is_known_without_asking_spotify(self):
+        self.dashboard_plays()
+        self.api.liked = True
+        for _ in range(3):
+            self.sp._state_at = 0
+            state = self.sp.state()
+        self.assertEqual(state["title"], "Here")
+        self.assertEqual(state["artist"], "A, B")
+        self.assertEqual(state["art"], "mid")
+        self.assertEqual((state["device"], state["device_id"], state["on_dashboard"]), ("Dashboard", "dash", True))
+        self.assertEqual((state["progress_ms"], state["at"], state["playing"]), (61000, 1234, True))
+        self.assertEqual((state["shuffle"], state["repeat"]), (True, "context"))
+        self.assertEqual(state["next"], {"title": "After", "artist": "C"})
+        self.assertTrue(state["liked"])
+        self.assertEqual(state["source"], "dashboard player")
+        # Only "is it liked", once for the song: no polling, no queue.
+        self.assertEqual([c[1] for c in self.api.calls], ["/me/library/contains"])
+
+    def test_music_leaving_the_dashboard_asks_spotify_where_it_went(self):
+        self.dashboard_plays()
+        self.sp.state()
+        self.now_playing()
+        self.sp.set_local_playback("dash", None)
+        state = self.sp.state()
+        self.assertEqual(self.asked_player(), 1)
+        self.assertEqual((state["device"], state["source"]), ("Phone", "Spotify"))
+
+    def test_a_dashboard_player_gone_quiet_is_not_trusted(self):
+        self.dashboard_plays()
+        self.sp._local_playback["received"] -= mod.LOCAL_FRESH + 1
+        self.now_playing()
+        self.assertEqual(self.sp.state()["device"], "Phone")
+        self.assertEqual(self.asked_player(), 1)
+
+    def test_presses_on_music_on_the_dashboard_do_not_ask_what_plays(self):
+        self.dashboard_plays()
+        self.assertTrue(self.sp.command("toggle")[0])
+        self.assertEqual(self.last_call()[:2], ("PUT", "/me/player/pause"))
+        self.assertEqual(self.asked_player(), 0)
+
     def test_not_connected(self):
         self.sp._refresh = None
         self.assertEqual(self.sp.command("toggle"), (False, "Spotify is not connected."))

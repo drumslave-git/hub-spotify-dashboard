@@ -59,6 +59,11 @@ IDLE_FOR = 30
 # with it.
 SHORT_WAIT = 120
 
+# While music plays on the dashboard's own player, that player says what it
+# plays (see web/src/engine.ts), every 10 s and at each change, and Spotify
+# is not asked. A report older than this means the player has gone quiet.
+LOCAL_FRESH = 25
+
 
 def _http(method: str, url: str, headers: dict | None = None, data: bytes | None = None):
     req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
@@ -92,6 +97,8 @@ class Spotify:
         self._refused_until = 0.0               # of the latest 429, for messages
         self._state: dict | None = None
         self._state_at = 0.0
+        self._state_local = False               # _state came from the dashboard's player
+        self._local_playback: dict | None = None
         self._last: dict | None = None
         self._last_at = 0.0
         # The dashboard's own player (see player.py), as a Spotify device.
@@ -323,9 +330,13 @@ class Spotify:
     @staticmethod
     def _describe(item: dict | None) -> dict:
         item = item or {}
-        images = (item.get("album") or item.get("show") or item).get("images") or []
-        # Images come largest first; the middle one (~300px) is plenty.
-        art = images[1]["url"] if len(images) > 1 else (images[0]["url"] if images else None)
+        images = [i for i in (item.get("album") or item.get("show") or item).get("images") or [] if i.get("url")]
+        # About 300 px is plenty. The Web API lists covers largest first;
+        # the dashboard's player may list them in another order.
+        if images and all(i.get("height") for i in images):
+            art = min(images, key=lambda i: abs(i["height"] - 300))["url"]
+        else:
+            art = images[1]["url"] if len(images) > 1 else (images[0]["url"] if images else None)
         artists = ", ".join(a["name"] for a in item.get("artists") or [])
         return {
             "title": item.get("name") or "",
@@ -399,6 +410,52 @@ class Spotify:
         left = (known["duration_ms"] - (known.get("progress_ms") or 0)) / 1000
         return max(2.0, min(PLAYING_FOR, left + 1))
 
+    def set_local_playback(self, device_id: str | None, playback: dict | None) -> None:
+        """What the dashboard's own player says it plays (None: nothing, or
+        the music is on another device)."""
+        with self._lock:
+            self._local_playback = (
+                {"device_id": device_id, "playback": playback, "received": time.time()}
+                if device_id and isinstance(playback, dict) and isinstance(playback.get("track"), dict)
+                else None
+            )
+
+    def _local_state(self) -> dict | None:
+        """The state as the dashboard's own player last told it, without a
+        request to Spotify; None when it plays nothing or has gone quiet."""
+        report = self._local_playback
+        if not report or time.time() - report["received"] > LOCAL_FRESH:
+            return None
+        playback = report["playback"]
+        track = playback["track"]
+        extras = self._track_extras(track.get("uri"), ask_queue=False)
+        return {
+            "active": True,
+            "playing": bool(playback.get("playing")),
+            **self._describe(track),
+            "device": playback.get("device_name") or "Dashboard",
+            "device_id": report["device_id"],
+            "progress_ms": int(playback.get("position_ms") or 0),
+            "context_uri": playback.get("context_uri"),
+            "shuffle": bool(playback.get("shuffle")),
+            "repeat": playback.get("repeat") or "off",
+            "at": int(playback.get("at") or report["received"] * 1000),
+            "liked": extras["liked"],
+            "next": playback.get("next"),
+        }
+
+    def _use_local(self) -> bool:
+        """Take what plays from the dashboard's own player when the music is
+        there. True when it was."""
+        local = self._local_state()
+        if local is not None:
+            self._state, self._state_at, self._state_local = local, time.time(), True
+            return True
+        if self._state_local:
+            # The music has left the dashboard: ask Spotify where it went.
+            self._state_local, self._state_at = False, 0.0
+        return False
+
     def state(self) -> dict:
         base = {
             "configured": self.configured,
@@ -410,7 +467,9 @@ class Spotify:
         if not self.connected:
             return base
         with self._lock:
-            if self._state is None or time.time() - self._state_at > self._fresh_for():
+            if not self._use_local() and (
+                self._state is None or time.time() - self._state_at > self._fresh_for()
+            ):
                 self._state = self._fetch_state()
                 self._state_at = time.time()
             device_id = self._state.get("device_id")
@@ -419,28 +478,33 @@ class Spotify:
                 **self._state,
                 "error": self.error or self._refusal_note(),
                 "on_dashboard": bool(device_id) and device_id == self._local_id,
+                "source": "dashboard player" if self._state_local else "Spotify",
             }
 
     # ------------------------------------------------------ likes and up next
 
-    def _track_extras(self, uri: str | None) -> dict:
+    def _track_extras(self, uri: str | None, ask_queue: bool = True) -> dict:
         """Whether the playing track is liked and what comes after it. Asked
         once per track (each request counts against Spotify's quota); a
-        press on the dashboard that changes either asks again."""
+        press on the dashboard that changes either asks again. The
+        dashboard's own player knows what comes next by itself, so for it
+        the queue is not asked (`ask_queue`)."""
         if not uri:
             return {"liked": None, "next": None}
         cached = self._extras
         if cached.get("uri") != uri:
-            liked = cached.get("liked") if cached.get("uri") == uri else None
+            liked = None
             status, p = self._api("GET", "/me/library/contains", {"uris": uri})
             if status == 200 and isinstance(p, list) and p:
                 liked = bool(p[0])
+            self._extras = cached = {"uri": uri, "liked": liked}
+        if ask_queue and "next" not in cached:
             upcoming = None
             status, p = self._api("GET", "/me/player/queue")
             if status == 200 and p and p.get("queue"):
                 following = self._describe(p["queue"][0])
                 upcoming = {"title": following["title"], "artist": following["artist"]}
-            self._extras = cached = {"uri": uri, "at": time.time(), "liked": liked, "next": upcoming}
+            cached["next"] = upcoming
         return {"liked": cached.get("liked"), "next": cached.get("next")}
 
     # ------------------------------------------------ what there is to play
@@ -697,7 +761,7 @@ class Spotify:
         if not self.connected:
             return False, "Spotify is not connected."
         with self._lock:
-            current = self._fetch_state()
+            current = self._state if self._use_local() else self._fetch_state()
             simple = None  # (method, path, query, body) for the one-call actions
             if action == "like":
                 if not current.get("uri"):
@@ -720,7 +784,8 @@ class Spotify:
                 status, payload = self._api(*simple)
                 ok = status in (200, 202, 204)
                 if ok and action == "like":
-                    self._extras = {**self._extras, "uri": current["uri"], "liked": simple[0] == "PUT"}
+                    known = self._extras if self._extras.get("uri") == current["uri"] else {}
+                    self._extras = {**known, "uri": current["uri"], "liked": simple[0] == "PUT"}
                 elif ok:
                     self._extras = {}  # the queue may have changed
                 self._state_at = 0

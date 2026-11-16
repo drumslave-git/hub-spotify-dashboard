@@ -189,7 +189,9 @@ Only one instance may point at a Hub; two would keep re-casting over each other.
   `spotify_refused_until` the requests the server holds back because Spotify
   said to wait (its quota for development-mode apps is counted per account,
   so the server asks Spotify what plays only every 15 to 30 seconds, and
-  just after a song should end).
+  just after a song should end). While the music plays on the dashboard
+  itself, its own player says what plays and Spotify is not asked at all:
+  `player.source` shows `dashboard player` then, `Spotify` otherwise.
   Under `local` it shows the built-in player (`ready` when Chrome is signed
   in to Spotify, and how many pages are listening to its sound); under
   `beat.audio` it shows what the Hub's page is doing with that sound.

@@ -585,8 +585,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": "not available"}, 403)
                 return
             try:
-                local.report(json.loads(raw))
-            except ValueError:
+                report = json.loads(raw)
+                local.report(report)
+                # What it plays, so Spotify need not be asked (see spotify.py).
+                spotify.set_local_playback(local.device_id, report.get("playback"))
+            except (ValueError, AttributeError):
                 pass
             self._json({"ok": True})
         elif path == "/api/player":
