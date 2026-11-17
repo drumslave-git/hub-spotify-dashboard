@@ -101,6 +101,7 @@ class Spotify:
         self._local_playback: dict | None = None
         self._last: dict | None = None
         self._last_at = 0.0
+        self._last_refused = False              # Spotify refused to say what played last
         # The dashboard's own player (see player.py), as a Spotify device.
         self._local_id: str | None = None
         self._local_at = 0.0
@@ -376,6 +377,7 @@ class Spotify:
         if time.time() - self._last_at < 600:
             return self._last
         status, p = self._api("GET", "/me/player/recently-played", {"limit": 20})
+        self._last_refused = status == 429
         if status == 200 and p and p.get("items"):
             # The latest thing played as part of a playlist or album, so the
             # music carries on afterwards; a lone track only if there is no such.
@@ -716,6 +718,11 @@ class Spotify:
         self._last_at = 0  # look again: what was played last may have changed
         last = self._last_played()
         if not last or not last.get("uri"):
+            if self._last_refused and self._refused_until - time.time() > SHORT_WAIT:
+                return False, (f"Spotify won't say what played last until {self._when(self._refused_until)}. "
+                               "Pick something from your playlists.")
+            if self._last_refused:
+                return False, self._reason(429, None)
             return False, "Nothing to resume yet. Play something on Spotify once."
         body = self._play_body(last)
         status, payload = self._api("PUT", "/me/player/play", {"device_id": device["id"]}, body)

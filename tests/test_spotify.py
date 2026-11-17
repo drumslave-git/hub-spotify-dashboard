@@ -466,6 +466,8 @@ class RefusalTests(unittest.TestCase):
             return 429, {"error": error}, {"Retry-After": str(wait)}
         if path == "/me/player":
             return 204, None, {}
+        if path == "/me/player/devices":
+            return 200, {"devices": [{"id": "dash", "name": "Dashboard"}]}, {}
         return 200, {"items": []}, {}
 
     def test_a_long_refusal_stops_only_that_endpoint(self):
@@ -496,6 +498,16 @@ class RefusalTests(unittest.TestCase):
     def test_the_screen_says_when_spotify_will_not_say_what_plays(self):
         self.refuse["/me/player"] = (7200, "")
         self.assertIn("Spotify stopped answering until", self.sp.state()["error"])
+
+    def test_play_says_why_it_cannot_find_what_played_last(self):
+        sleep, mod.time.sleep = mod.time.sleep, lambda _s: None
+        self.addCleanup(setattr, mod.time, "sleep", sleep)
+        self.sp.set_local_device("dash")
+        self.refuse["/me/player/recently-played"] = (7200, "QUOTA_EXCEEDED")
+        ok, message = self.sp.command("toggle")
+        self.assertFalse(ok)
+        self.assertIn("won't say what played last until", message)
+        self.assertNotIn("Nothing to resume", message)
 
     def test_the_wait_is_shown_with_its_day(self):
         self.assertNotIn(" ", self.sp._when(time.time()))
