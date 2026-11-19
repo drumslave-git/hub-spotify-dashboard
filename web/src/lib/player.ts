@@ -92,12 +92,13 @@ export function usePlayer(offset: RefObject<number>) {
       .catch(() => {});
   }
 
-  // One press at a time: starting music takes a second or two, and extra
+  // One press at a time: starting music takes a second or two (up to twenty
+  // when the server's player has to reconnect to Spotify first), and extra
   // impatient taps would otherwise each flip play and pause again.
   function setBusy(on: boolean) {
     s.busy = on;
     clearTimeout(s.busyTimer);
-    if (on) s.busyTimer = window.setTimeout(() => setBusy(false), 6000);
+    if (on) s.busyTimer = window.setTimeout(() => setBusy(false), 25000);
     redraw();
   }
 

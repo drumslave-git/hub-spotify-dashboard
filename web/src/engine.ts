@@ -43,6 +43,9 @@ declare global {
 }
 
 const name = new URLSearchParams(location.search).get('name') || 'Dashboard';
+// Tells this load of the page from the one before it: after the server asks
+// for a reload, a last report from the old load must not count.
+const page = Math.random().toString(36).slice(2);
 let device: string | null = null;
 // What plays here, sent along with every report: while it is known, the
 // server need not ask Spotify's Web API, whose requests count against a quota.
@@ -83,7 +86,7 @@ function describe(state: PlaybackState | null) {
 function report(event: string, message = '') {
   fetch('/api/engine', {
     method: 'POST',
-    body: JSON.stringify({ event, device, message, playback: device ? playback : null }),
+    body: JSON.stringify({ event, page, device, message, playback: device ? playback : null }),
   })
     .then((r) => r.text())
     .catch(() => {});
@@ -94,6 +97,29 @@ function token(): Promise<string | null> {
     .then((r) => (r.ok ? r.json() : r.text().then(() => null)))
     .then((d: { token?: string } | null) => d?.token ?? null)
     .catch(() => null);
+}
+
+// Spotify's player asks for a token whenever it needs a new one, and waits
+// for the answer for good: one failed request must not leave it waiting.
+function tokenFor(player: (token: string) => void) {
+  token().then((t) => {
+    if (t) player(t);
+    else setTimeout(() => tokenFor(player), 3000);
+  });
+}
+
+// The server's orders, asked for with a request it holds open until there is
+// one (or 25 s have passed), so an order arrives at once. The only order:
+// load afresh, because Spotify no longer knows this player although the
+// player itself noticed nothing. A new load signs in as a new device.
+function listen() {
+  fetch('/api/engine/orders?page=' + page, { cache: 'no-store' })
+    .then((r) => r.json())
+    .then((order: { reload?: boolean }) => {
+      if (order.reload) location.reload();
+      else listen();
+    })
+    .catch(() => setTimeout(listen, 2000));
 }
 
 // A failed start is retried from scratch: a sign-in, or a hiccup at Spotify,
@@ -123,9 +149,7 @@ window.onSpotifyWebPlaybackSDKReady = () => {
   const player = new window.Spotify.Player({
     name,
     volume: 1,
-    getOAuthToken: (cb) => {
-      token().then((t) => { if (t) cb(t); });
-    },
+    getOAuthToken: tokenFor,
   });
   player.addListener('ready', (e) => {
     device = e.device_id ?? null;
@@ -168,5 +192,6 @@ window.onSpotifyWebPlaybackSDKReady = () => {
 
 report('idle');
 start();
+listen();
 
 export {};

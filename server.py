@@ -29,7 +29,7 @@ from pychromecast.controllers.dashcast import DashCastController
 
 import moon
 from player import SILENCE, LocalPlayer, wav_header
-from spotify import Spotify
+from spotify import LISTED_CHECK, Spotify
 
 ROOT = Path(__file__).parent
 # The built page (`npm run build` in web/; the Docker image builds it).
@@ -406,15 +406,24 @@ spotify = Spotify(
 
 # The dashboard's own Spotify device; its audio is streamed to the page.
 local = LocalPlayer(CONFIG["spotify"]["player_name"], CONFIG["port"], note=keeper.note)
+spotify.reconnect_player = local.reconnect
 
 
 def link_player() -> None:
     """Tell the Spotify side which device is the dashboard, while the player is
-    signed in and a page is actually listening to its audio."""
+    signed in and a page is actually listening to its audio. Every few minutes,
+    also make sure Spotify still knows that device."""
+    checked = time.time()
     while True:
         time.sleep(3)
         if local.ready and local.hub.listeners:
             spotify.set_local_device(local.device_id, listening_since=local.hub.joined)
+        if time.time() - checked > LISTED_CHECK:
+            checked = time.time()
+            try:
+                spotify.keep_local_listed()
+            except Exception as err:   # this loop must outlive a hiccup
+                log.warning("checking the player's device failed: %r", err)
 
 
 def test_tone() -> None:
@@ -504,6 +513,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
             token = spotify.access_token()
             self._json({"token": token}, 200 if token else 503)
+        elif path == "/api/engine/orders":
+            # The player page asks what to do and waits here for the answer.
+            if not self._from_here():
+                self._json({"error": "not available"}, 403)
+                return
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            self._json(local.next_order(query.get("page", [""])[0]))
         elif path == "/api/spotify/login":
             if not spotify.configured:
                 self._html("Spotify is not set up: SPOTIFY_CLIENT_ID is missing.", 400)

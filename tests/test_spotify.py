@@ -90,8 +90,72 @@ class SpotifyTests(unittest.TestCase):
         """Idle and no in-page player: never start the Hub's own app or a random device."""
         ok, message = self.sp.command("toggle")
         self.assertFalse(ok)
-        self.assertIn("by itself", message)
+        self.assertIn("player is not ready", message)
         self.assertEqual(self.api.starts(), [])
+
+    def reconnects_as(self, device_id, listed=True):
+        """The dashboard's player signs in afresh as `device_id` when asked."""
+        asked = []
+
+        def reconnect():
+            asked.append(1)
+            if device_id and listed:
+                self.api.devices.append({"id": device_id, "name": "Dashboard"})
+            return device_id
+
+        self.sp.reconnect_player = reconnect
+        return asked
+
+    def test_play_reconnects_a_player_spotify_no_longer_lists(self):
+        """The player says it is ready, Spotify does not know it (2026-11-19)."""
+        self.sp.set_local_device("gone")
+        asked = self.reconnects_as("fresh")
+        ok, message = self.sp.command("toggle")
+        self.assertEqual((ok, message, len(asked)), (True, "", 1))
+        starts = self.api.starts()
+        self.assertTrue(starts)
+        self.assertTrue(all("fresh" in str(call) and "gone" not in str(call) for call in starts))
+        self.assertEqual(self.sp._local_id, "fresh")
+
+    def test_picking_a_playlist_reconnects_the_player_too(self):
+        self.sp.set_local_device("gone")
+        self.reconnects_as("fresh")
+        self.assertTrue(self.sp.command("play", "spotify:album:x")[0])
+        self.assertEqual(self.play_calls()[-1][2], {"device_id": "fresh"})
+
+    def test_play_says_so_when_the_player_does_not_come_back(self):
+        self.sp.set_local_device("gone")
+        self.reconnects_as(None)
+        ok, message = self.sp.command("toggle")
+        self.assertFalse(ok)
+        self.assertIn("lost its connection to Spotify", message)
+        self.assertEqual(self.api.starts(), [])
+        self.assertFalse(self.sp.local_ready)   # the page shows the player starting
+
+    def test_play_gives_up_on_a_player_spotify_never_lists(self):
+        self.sp.set_local_device("gone")
+        self.reconnects_as("fresh", listed=False)
+        ok, message = self.sp.command("toggle")
+        self.assertFalse(ok)
+        self.assertIn("lost its connection to Spotify", message)
+        asked = sum(1 for c in self.api.calls if c[1] == "/me/player/devices")
+        self.assertEqual(asked, 1 + mod.LISTED_TRIES)
+
+    def test_an_idle_player_spotify_dropped_is_reconnected_before_anyone_presses(self):
+        self.sp.set_local_device("gone")
+        asked = self.reconnects_as("fresh")
+        self.sp.keep_local_listed()
+        self.assertEqual((len(asked), self.sp._local_id), (1, "fresh"))
+        self.sp.keep_local_listed()             # listed now: left alone
+        self.assertEqual(len(asked), 1)
+        self.assertEqual(self.api.starts(), [])  # checking never starts music
+
+    def test_the_player_is_not_checked_while_it_plays(self):
+        self.dashboard_plays()
+        asked = self.reconnects_as("fresh")
+        self.sp.keep_local_listed()
+        self.assertEqual(len(asked), 0)
+        self.assertNotIn("/me/player/devices", [c[1] for c in self.api.calls])
 
     def test_play_resumes_on_dashboard(self):
         self.api.devices.append({"id": "dash", "name": "Dashboard", "is_active": False})
@@ -508,6 +572,17 @@ class RefusalTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("won't say what played last until", message)
         self.assertNotIn("Nothing to resume", message)
+
+    def test_play_does_not_need_the_list_of_devices(self):
+        """Refused the list, the player that says it is ready is still used."""
+        sleep, mod.time.sleep = mod.time.sleep, lambda _s: None
+        self.addCleanup(setattr, mod.time, "sleep", sleep)
+        self.sp.set_local_device("dash")
+        self.sp.reconnect_player = lambda: self.fail("no reason to reconnect")
+        self.refuse["/me/player/devices"] = (7200, "QUOTA_EXCEEDED")
+        self.sp.command("toggle")
+        self.assertIn(("PUT", "/me/player"), self.sent)   # asked to play on the dashboard
+        self.sp.keep_local_listed()                        # and no answer is not "dropped"
 
     def test_the_wait_is_shown_with_its_day(self):
         self.assertNotIn(" ", self.sp._when(time.time()))

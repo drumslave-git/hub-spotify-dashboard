@@ -134,6 +134,8 @@ class LocalPlayer(threading.Thread):
 
     daemon = True
     STALE = 60   # seconds without a report from the player page before a restart
+    RECONNECT_WAIT = 15   # seconds a freshly loaded player page gets to become ready
+    ORDER_WAIT = 25       # seconds the player page's question "anything to do?" is held open
 
     def __init__(self, name: str, port: int, note=None) -> None:
         super().__init__(name="player")
@@ -148,6 +150,11 @@ class LocalPlayer(threading.Thread):
         self.last_report = 0.0
         self.restarts = 0
         self._spared = False   # a restart is being held off while music plays
+        # Reloading the player page on request (see reconnect).
+        self._orders = threading.Condition()
+        self._page: str | None = None      # which load of the player page reported last
+        self._retired: str | None = None   # a load told to go: its reports no longer count
+        self._came_back = threading.Event()
 
     @property
     def enabled(self) -> bool:
@@ -178,10 +185,17 @@ class LocalPlayer(threading.Thread):
     def report(self, data: dict) -> None:
         """What web/engine.html says about Spotify's player inside Chrome."""
         event = str(data.get("event") or "")
+        page = data.get("page")
+        if page is not None and page == self._retired:
+            # The page that was told to load afresh. If it never does, its
+            # silence here gets Chrome restarted (see stale).
+            return
+        self._page = page
         before = (self.state, self.message)
         self.last_report = time.time()
         if event in ("ready", "alive") and data.get("device"):
             self.state, self.message, self.device_id = "ready", "", str(data["device"])
+            self._came_back.set()
         elif event == "waiting":      # nobody has signed in to Spotify yet
             self.state, self.message, self.device_id = "waiting", "", None
         elif event == "error":
@@ -198,6 +212,34 @@ class LocalPlayer(threading.Thread):
             self._note(f"player: playback error: {data.get('message')}")
         if (self.state, self.message) != before:
             self._note(f"player: {self.state}" + (f" ({data.get('message')})" if self.state == "error" else ""))
+
+    # ------------------------------------------------- connecting to Spotify afresh
+
+    def reconnect(self, wait: float = RECONNECT_WAIT) -> str | None:
+        """Load the player page afresh, so Spotify's player signs in again as
+        a new device. Returns the new device id, or None when the player is
+        not ready within `wait` seconds.
+
+        For a player that says it is ready while Spotify no longer knows it:
+        its connection to Spotify can die without the player noticing (seen
+        2026-11-19, after three days up)."""
+        with self._orders:
+            self._retired = self._page
+            self._came_back.clear()
+            self.state, self.message, self.device_id = "starting", "", None
+            self._orders.notify_all()
+        self._note("player: connecting to Spotify afresh")
+        self._came_back.wait(wait)
+        return self.device_id if self.ready else None
+
+    def next_order(self, page: str, wait: float = ORDER_WAIT) -> dict:
+        """What the player page (this load of it: `page`) should do next. The
+        page keeps this question open, so an order reaches it at once instead
+        of at its next report."""
+        with self._orders:
+            if page != self._retired:
+                self._orders.wait(wait)
+            return {"reload": page == self._retired}
 
     def stale(self, started: float, now: float) -> str:
         """Why the player should be restarted, or "" while it is fine."""

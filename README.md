@@ -193,7 +193,12 @@ Only one instance may point at a Hub; two would keep re-casting over each other.
   itself, its own player says what plays and Spotify is not asked at all:
   `player.source` shows `dashboard player` then, `Spotify` otherwise.
   Under `local` it shows the built-in player (`ready` when Chrome is signed
-  in to Spotify, and how many pages are listening to its sound); under
+  in to Spotify, and how many pages are listening to its sound). That player
+  can lose its connection to Spotify without noticing, and Spotify then drops
+  it from its devices: the server checks Spotify's list every 10 minutes while
+  nothing plays there, and whenever play is pressed, and has the player sign
+  in afresh when it is missing (`player: connecting to Spotify afresh` in the
+  events). Under
   `beat.audio` it shows what the Hub's page is doing with that sound.
   `beat.sent` counts the page's heartbeats that got through or failed (with
   the last error), `beat.timers` any long pause in the page's timers (the

@@ -64,6 +64,12 @@ SHORT_WAIT = 120
 # is not asked. A report older than this means the player has gone quiet.
 LOCAL_FRESH = 25
 
+# Seconds between checks that Spotify still lists the dashboard's own player
+# while it is idle (one request each), and how many times, a second apart,
+# the list is looked at for a player that has just signed in afresh.
+LISTED_CHECK = 600
+LISTED_TRIES = 6
+
 
 def _http(method: str, url: str, headers: dict | None = None, data: bytes | None = None):
     req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
@@ -81,9 +87,12 @@ def _http(method: str, url: str, headers: dict | None = None, data: bytes | None
 
 class Spotify:
     def __init__(self, client_id: str, redirect_uri: str, store: Path, device: str = "",
-                 note=log.info) -> None:
+                 note=log.info, reconnect_player=None) -> None:
         self.client_id = client_id
         self.note = note  # for events worth seeing on /api/debug
+        # Has the dashboard's own player sign in to Spotify afresh; returns
+        # its new device id, or None (player.py's LocalPlayer.reconnect).
+        self.reconnect_player = reconnect_player
         self.redirect_uri = redirect_uri
         self.preferred_device = device
         self._store = store
@@ -584,13 +593,20 @@ class Spotify:
                 break
         return uris[:LIKED_MAX]
 
+    def _listed_devices(self) -> list[dict] | None:
+        """The devices Spotify can play on right now, as it lists them; None
+        when it would not say."""
+        status, p = self._api("GET", "/me/player/devices")
+        if status != 200:
+            return None
+        return [d for d in (p or {}).get("devices") or [] if d.get("id") and not d.get("is_restricted")]
+
     def devices(self) -> list[dict]:
         """Where Spotify can play right now, the dashboard's own player first."""
-        status, p = self._api("GET", "/me/player/devices")
         found = [
             {"id": d["id"], "name": d.get("name") or "Device", "type": (d.get("type") or "").lower(),
              "active": bool(d.get("is_active")), "here": d["id"] == self._local_id}
-            for d in ((p or {}).get("devices") or []) if status == 200 and d.get("id") and not d.get("is_restricted")
+            for d in self._listed_devices() or []
         ]
         return sorted(found, key=lambda d: (not d["here"], d["name"].lower()))
 
@@ -681,33 +697,76 @@ class Spotify:
         self.note("takeover: gave up moving the music to the dashboard")
         self.error = "Could not move the music to the dashboard."
 
+    def _reconnect_local(self) -> str | None:
+        """Spotify does not list the dashboard's player, although the player
+        says it is ready: its connection to Spotify has died without it
+        noticing (seen 2026-11-19 after three days up: play had nowhere to
+        start music). Have it sign in afresh. Returns its new device id once
+        Spotify lists it, or None."""
+        if not self.reconnect_player:
+            return None
+        self.note("spotify: the dashboard's player is missing from Spotify's devices; reconnecting it")
+        device_id = self.reconnect_player()
+        for _ in range(LISTED_TRIES if device_id else 0):
+            listed = self._listed_devices()
+            if listed is None or any(d["id"] == device_id for d in listed):
+                self._local_id, self._local_at = device_id, time.time()
+                self.note("spotify: the dashboard's player is back")
+                return device_id
+            time.sleep(1)   # Spotify lists a new player a moment after it is ready
+        self.note("spotify: Spotify still does not list the dashboard's player" if device_id
+                  else "spotify: the dashboard's player did not come back")
+        self._local_id = None   # not ready, until the player reports in again
+        return None
+
+    def keep_local_listed(self) -> None:
+        """Called every few minutes: make sure Spotify still knows the
+        dashboard's player, so that a press on play does not have to wait for
+        it to reconnect. Not asked while music plays there."""
+        if not self.connected:
+            return
+        with self._lock:
+            if not self.local_ready or self._local_state() is not None:
+                return
+            listed = self._listed_devices()
+            if listed is None or any(d["id"] == self._local_id for d in listed):
+                return
+            self._reconnect_local()
+
     # -------------------------------------------------------------- controls
 
-    def _pick_device(self) -> dict | None:
-        status, p = self._api("GET", "/me/player/devices")
-        devices = [d for d in (p or {}).get("devices") or [] if not d.get("is_restricted")]
-        if status != 200 or not devices:
-            return None
+    def _pick_device(self) -> tuple[dict | None, str]:
+        """The device to start music on, or why there is none."""
+        devices = self._listed_devices()
         if self.local_ready:
+            if devices is None:
+                # Spotify would not list its devices (a refusal, say). The
+                # player says it is ready, so try it rather than give up.
+                return {"id": self._local_id}, ""
             for d in devices:
-                if d.get("id") == self._local_id:
-                    return d
+                if d["id"] == self._local_id:
+                    return d, ""
+            device_id = self._reconnect_local()
+            if device_id:
+                return {"id": device_id}, ""
+            return None, ("The dashboard's player lost its connection to Spotify and is starting again. "
+                          "Try in a minute.")
         # Without the dashboard's own player, only start music on a device that was
         # chosen on purpose. Never fall back to the Hub's own Spotify app or a
         # random device: that would switch the Hub's screen or play elsewhere.
         wanted = self.preferred_device.strip().lower()
-        for d in devices:
+        for d in devices or []:
             if wanted and d.get("name", "").strip().lower() == wanted:
-                return d
-        return None
+                return d, ""
+        return None, "The dashboard's player is not ready. Try again in a moment."
 
     def _resume(self, fresh: bool = False) -> tuple[bool, str]:
         """Start playback when nothing is playing: continue where Spotify left
         off, or failing that (or when `fresh`), start the most recent track's
         playlist or album."""
-        device = self._pick_device()
+        device, why_not = self._pick_device()
         if device is None:
-            return False, "The dashboard can't play music by itself yet."
+            return False, why_not
         if not fresh:
             status, _ = self._api("PUT", "/me/player", body={"device_ids": [device["id"]], "play": True})
             if status in (200, 202, 204):
@@ -750,9 +809,9 @@ class Spotify:
         if current.get("active") and current.get("device_id"):
             device_id = current["device_id"]
         else:
-            device = self._pick_device()
+            device, why_not = self._pick_device()
             if device is None:
-                return False, "The dashboard can't play music by itself yet."
+                return False, why_not
             device_id = device["id"]
         if uri == LIKED:
             uris = self._liked_uris()

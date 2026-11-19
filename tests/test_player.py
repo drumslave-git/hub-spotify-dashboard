@@ -2,6 +2,7 @@
 import struct
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -164,6 +165,38 @@ class LocalPlayerTests(unittest.TestCase):
         self.assertIn("restarting once the music stops", notes[0])
         # The song ends; a minute of quiet later the restart goes ahead.
         self.assertIn("no word", local.stale(now - 500, now + 62))
+
+    def test_reconnect_reloads_the_page_and_waits_for_its_new_device(self):
+        local, notes = self.make()
+        local.report({"event": "ready", "device": "old", "page": "first"})
+        self.assertEqual(local.next_order("first", wait=0), {"reload": False})
+        answers = []
+        waiting = threading.Thread(target=lambda: answers.append(local.next_order("first", wait=5)))
+        waiting.start()
+
+        def page():
+            waiting.join()                       # the order reaches the open question
+            local.report({"event": "alive", "device": "old", "page": "first"})   # a last word: ignored
+            local.report({"event": "idle", "device": None, "page": "second"})
+            local.report({"event": "ready", "device": "new", "page": "second"})
+
+        threading.Thread(target=page).start()
+        self.assertEqual(local.reconnect(wait=5), "new")
+        self.assertEqual(answers, [{"reload": True}])
+        self.assertEqual(local.next_order("second", wait=0), {"reload": False})
+        self.assertIn("player: connecting to Spotify afresh", notes)
+
+    def test_reconnect_gives_up_when_the_page_does_not_come_back(self):
+        local, _ = self.make()
+        local.report({"event": "ready", "device": "old", "page": "first"})
+        self.assertIsNone(local.reconnect(wait=0.05))
+        self.assertFalse(local.ready)
+        # Still told to go when it asks, however late; and what it says in the
+        # meantime does not count, so its silence gets Chrome restarted.
+        self.assertEqual(local.next_order("first", wait=0), {"reload": True})
+        before = local.last_report
+        local.report({"event": "alive", "device": "old", "page": "first"})
+        self.assertEqual((local.ready, local.last_report), (False, before))
 
     def test_without_chrome_there_is_no_player(self):
         local, _ = self.make()
