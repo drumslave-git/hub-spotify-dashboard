@@ -15,8 +15,10 @@ if os.geteuid() == 0:
     for folder, _dirs, files in os.walk(data):
         for path in [folder] + [os.path.join(folder, name) for name in files]:
             try:
-                if os.stat(path).st_uid != UID:
-                    os.chown(path, UID, GID)
+                # The entry itself, not what a link points to: Chrome leaves
+                # links to nothing in its profile (SingletonLock and others).
+                if os.lstat(path).st_uid != UID:
+                    os.lchown(path, UID, GID)
             except OSError as err:
                 print(f"entrypoint: cannot take ownership of {path}: {err}", flush=True)
     os.setgroups([])

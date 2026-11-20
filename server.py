@@ -307,15 +307,15 @@ class Keeper(threading.Thread):
     def _session(self) -> None:
         host = CONFIG["hub_host"]
         cast = pychromecast.get_chromecast_from_host((host, 8009, None, None, None))
-        cast.wait(timeout=20)
-        dash = DashCastController()
-        cast.register_handler(dash)
-        self.note(f"connected to hub at {host}")
-        ours = {APP_DASHCAST, CONFIG["cast_app_id"]} - {""}
-        idle_since: float | None = None
-        spotify_since: float | None = None
-        hurry = False   # cast right away (after closing an app ourselves)
         try:
+            cast.wait(timeout=20)
+            dash = DashCastController()
+            cast.register_handler(dash)
+            self.note(f"connected to hub at {host}")
+            ours = {APP_DASHCAST, CONFIG["cast_app_id"]} - {""}
+            idle_since: float | None = None
+            spotify_since: float | None = None
+            hurry = False   # cast right away (after closing an app ourselves)
             while True:
                 time.sleep(self.POLL)
                 status = cast.status
@@ -377,7 +377,20 @@ class Keeper(threading.Thread):
                             cast.quit_app()
                             spotify_since, hurry = None, True
         finally:
+            self._close(cast)
+
+    @staticmethod
+    def _close(cast) -> None:
+        """End a connection to the Hub, also one that never got through.
+
+        A connection keeps a thread that tries to reach the Hub for ever, with
+        a few open files of its own, until it is told to stop. One left behind
+        at every failed attempt, every 35 s while the Hub was unreachable, is
+        what ran the service out of open files (2026-11-20)."""
+        try:
             cast.disconnect(timeout=5)
+        except TimeoutError:
+            pass   # in the middle of an attempt: it stops when that one ends
 
     def _cast(self, cast, dash: DashCastController, why: str) -> None:
         self.casts += 1
@@ -448,6 +461,16 @@ def test_tone() -> None:
 
     local.state = "test"
     local.hub.pump(read)
+
+
+def open_files() -> int | None:
+    """How many files and sockets the service holds open (None where the
+    system does not say: anything but Linux). A number that only ever grows
+    is a leak; the service stops working at the limit, usually 1024."""
+    try:
+        return len(os.listdir("/proc/self/fd"))
+    except OSError:
+        return None
 
 
 def page_version() -> str:
@@ -552,6 +575,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(
                 {
                     "version": VERSION,
+                    "threads": threading.active_count(),
+                    "open_files": open_files(),
                     "keeper": {
                         "state": keeper.state,
                         "app": keeper.app_name,

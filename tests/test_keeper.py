@@ -62,6 +62,24 @@ class BeatSummaryTests(unittest.TestCase):
         self.assertIsNone(keeper.hidden_since)
         self.assertFalse(keeper.covered_too_long(time.time() + 600))
 
+    def test_connection_that_never_got_through_is_ended(self):
+        # Left alone, its thread tries to reach the Hub for ever and keeps
+        # its sockets: one more at every attempt while the Hub is away.
+        cast = mock.Mock()
+        cast.wait.side_effect = RuntimeError("no answer from the Hub")
+        with mock.patch.object(self.server.pychromecast, "get_chromecast_from_host", return_value=cast):
+            with self.assertRaisesRegex(RuntimeError, "no answer"):
+                self.server.Keeper()._session()
+        cast.disconnect.assert_called_once()
+
+    def test_slow_end_of_a_connection_does_not_hide_why_it_failed(self):
+        cast = mock.Mock()
+        cast.wait.side_effect = RuntimeError("no answer from the Hub")
+        cast.disconnect.side_effect = TimeoutError("join", 5)
+        with mock.patch.object(self.server.pychromecast, "get_chromecast_from_host", return_value=cast):
+            with self.assertRaisesRegex(RuntimeError, "no answer"):
+                self.server.Keeper()._session()
+
     def test_hidden_page_that_stopped_beating_is_left_to_the_stale_check(self):
         keeper = self.server.Keeper()
         keeper.page_beat({"visible": "hidden"})

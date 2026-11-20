@@ -185,6 +185,10 @@ Only one instance may point at a Hub; two would keep re-casting over each other.
 - `http://<server>:8765/api/debug` shows the keeper state, the Hub's last
   heartbeat (including the layout it measured on its own screen), the player
   state, and recent events.
+  `threads` and `open_files` count what the service holds: both stay roughly
+  level in a healthy service, and one that only grows is a leak (at about 1024
+  open files the service stops answering, with `Too many open files` in the
+  log).
   `spotify_errors` lists the latest requests Spotify refused, and
   `spotify_refused_until` the requests the server holds back because Spotify
   said to wait (its quota for development-mode apps is counted per account,
