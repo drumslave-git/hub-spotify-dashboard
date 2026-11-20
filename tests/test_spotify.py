@@ -1,6 +1,7 @@
 """Spotify control logic against a fake Web API (no network)."""
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -24,9 +25,13 @@ class FakeApi:
         self.queue = []
         self.playlists = []
         self.saved = []  # liked tracks, newest first
+        self.dead = set()  # devices Spotify lists but cannot find when told to play
 
     def __call__(self, method, path, query=None, body=None):
         self.calls.append((method, path, query, body))
+        named = {(query or {}).get("device_id"), *((body or {}).get("device_ids") or [])}
+        if method == "PUT" and named & self.dead:
+            return 404, {"error": {"status": 404, "message": "Not found."}}
         if path == "/me/player/devices":
             return 200, {"devices": self.devices}
         if path == "/me/library/contains":
@@ -78,7 +83,9 @@ class SpotifyTests(unittest.TestCase):
     def setUp(self):
         self._sleep = mod.time.sleep
         mod.time.sleep = lambda _s: None  # don't wait in retries
-        self.sp = mod.Spotify("cid", "http://127.0.0.1/cb", Path(tempfile.mkdtemp()) / "s.json")
+        self.notes = []
+        self.sp = mod.Spotify("cid", "http://127.0.0.1/cb", Path(tempfile.mkdtemp()) / "s.json",
+                              note=self.notes.append)
         self.sp._refresh = "refresh"
         self.api = FakeApi()
         self.sp._api = self.api
@@ -140,6 +147,81 @@ class SpotifyTests(unittest.TestCase):
         self.assertIn("lost its connection to Spotify", message)
         asked = sum(1 for c in self.api.calls if c[1] == "/me/player/devices")
         self.assertEqual(asked, 1 + mod.LISTED_TRIES)
+
+    def listed_but_dead(self):
+        """Spotify lists the dashboard's player and answers 404 when told to
+        play there (2026-11-20)."""
+        self.api.devices.append({"id": "gone", "name": "Dashboard"})
+        self.api.dead.add("gone")
+        self.sp.set_local_device("gone")
+
+    def test_play_reconnects_a_player_spotify_lists_but_cannot_find(self):
+        self.listed_but_dead()
+        asked = self.reconnects_as("fresh")
+        ok, message = self.sp.command("toggle")
+        self.assertEqual((ok, message, len(asked)), (True, "", 1))
+        self.assertEqual(self.play_calls()[-1][2], {"device_id": "fresh"})
+        self.assertEqual(self.sp._local_id, "fresh")
+        self.assertTrue(any("cannot be found (404)" in n for n in self.notes))
+
+    def test_picking_a_playlist_reconnects_a_player_spotify_cannot_find(self):
+        self.listed_but_dead()
+        asked = self.reconnects_as("fresh")
+        self.assertEqual(self.sp.command("play", "spotify:album:x"), (True, ""))
+        self.assertEqual(len(asked), 1)
+        self.assertEqual(self.play_calls()[-1][2:], ({"device_id": "fresh"}, {"context_uri": "spotify:album:x"}))
+
+    def test_play_says_so_when_a_player_spotify_cannot_find_does_not_come_back(self):
+        self.listed_but_dead()
+        self.reconnects_as(None)
+        ok, message = self.sp.command("toggle")
+        self.assertFalse(ok)
+        self.assertIn("lost its connection to Spotify", message)
+
+    def test_a_player_still_not_found_after_reconnecting_is_not_tried_for_ever(self):
+        self.listed_but_dead()
+        self.api.dead.add("fresh")
+        asked = self.reconnects_as("fresh")
+        ok, message = self.sp.command("toggle")
+        self.assertEqual((ok, message, len(asked)), (False, "Not found.", 1))
+
+    def test_a_404_from_another_device_does_not_reconnect_the_dashboard(self):
+        self.api.devices.append({"id": "dash", "name": "Dashboard"})
+        self.sp.set_local_device("dash")
+        self.api.dead.add("phone")
+        self.api.player = {"is_playing": True, "item": {"name": "T", "uri": "u", "artists": []},
+                           "device": {"id": "phone", "name": "Phone"}}
+        self.sp.reconnect_player = lambda: self.fail("the dashboard's player is fine")
+        self.assertEqual(self.sp.command("play", "spotify:album:x"), (False, "Not found."))
+
+    def test_the_player_gets_its_token_while_a_press_waits_for_it(self):
+        """A press holds the lock while the player signs in afresh, and the
+        player needs a token for that. With one lock for both, the wait ran
+        out every time and the player was ready a second later (2026-11-20)."""
+        self.sp.set_local_device("gone")
+        self.sp._access, self.sp._expires = "token", time.time() + 3600
+
+        def reconnect():
+            got = []
+
+            def page():   # the freshly loaded player page, on its own threads
+                self.sp.set_local_playback(None, None)   # its first report
+                got.append(self.sp.access_token())
+
+            asking = threading.Thread(target=page, daemon=True)
+            asking.start()
+            asking.join(2)
+            if got != ["token"]:
+                return None   # the page never got its token: not ready
+            self.api.devices.append({"id": "fresh", "name": "Dashboard"})
+            return "fresh"
+
+        self.sp.reconnect_player = reconnect
+        self.assertEqual(self.sp.command("toggle"), (True, ""))
+        self.sp.set_local_device("gone")
+        self.api.devices.pop()
+        self.sp.keep_local_listed()            # the same while nobody presses
+        self.assertEqual(self.sp._local_id, "fresh")
 
     def test_an_idle_player_spotify_dropped_is_reconnected_before_anyone_presses(self):
         self.sp.set_local_device("gone")

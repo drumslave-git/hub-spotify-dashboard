@@ -202,7 +202,9 @@ Only one instance may point at a Hub; two would keep re-casting over each other.
   it from its devices: the server checks Spotify's list every 10 minutes while
   nothing plays there, and whenever play is pressed, and has the player sign
   in afresh when it is missing (`player: connecting to Spotify afresh` in the
-  events). Under
+  events). Spotify may also go on listing such a player and answer 404 when
+  told to play there; the player then signs in afresh too, and the music
+  starts on it a few seconds after the press. Under
   `beat.audio` it shows what the Hub's page is doing with that sound.
   `beat.sent` counts the page's heartbeats that got through or failed (with
   the last error), `beat.timers` any long pause in the page's timers (the

@@ -97,6 +97,11 @@ class Spotify:
         self.preferred_device = device
         self._store = store
         self._lock = threading.RLock()
+        # The token has a lock of its own. A press on play holds `_lock` while
+        # it waits for the dashboard's player to sign in afresh, and that
+        # player needs a token to do so: with one lock for both, every such
+        # wait ran out, and the player was ready a second later (2026-11-20).
+        self._token_lock = threading.Lock()
         self._refresh: str | None = None
         self._access: str | None = None
         self._expires = 0.0
@@ -189,7 +194,7 @@ class Spotify:
         )
         if status != 200 or not body or "refresh_token" not in body:
             return f"Spotify refused the sign-in ({status}): {(body or {}).get('error_description', body)}"
-        with self._lock:
+        with self._lock, self._token_lock:
             self._refresh = body["refresh_token"]
             self._access = body["access_token"]
             self._expires = time.time() + body.get("expires_in", 3600)
@@ -215,7 +220,7 @@ class Spotify:
             log.error("spotify: could not save the sign-in (%s)", self.store_error)
 
     def _token(self) -> str | None:
-        with self._lock:
+        with self._token_lock:
             if self._access and time.time() < self._expires - 60:
                 return self._access
             if not self._refresh:
@@ -423,13 +428,13 @@ class Spotify:
 
     def set_local_playback(self, device_id: str | None, playback: dict | None) -> None:
         """What the dashboard's own player says it plays (None: nothing, or
-        the music is on another device)."""
-        with self._lock:
-            self._local_playback = (
-                {"device_id": device_id, "playback": playback, "received": time.time()}
-                if device_id and isinstance(playback, dict) and isinstance(playback.get("track"), dict)
-                else None
-            )
+        the music is on another device). Takes no lock: the player's reports
+        must not wait for a press that is waiting for the player."""
+        self._local_playback = (
+            {"device_id": device_id, "playback": playback, "received": time.time()}
+            if device_id and isinstance(playback, dict) and isinstance(playback.get("track"), dict)
+            else None
+        )
 
     def _local_state(self) -> dict | None:
         """The state as the dashboard's own player last told it, without a
@@ -697,15 +702,17 @@ class Spotify:
         self.note("takeover: gave up moving the music to the dashboard")
         self.error = "Could not move the music to the dashboard."
 
-    def _reconnect_local(self) -> str | None:
-        """Spotify does not list the dashboard's player, although the player
+    def _reconnect_local(self, why: str = "is missing from Spotify's devices") -> str | None:
+        """Spotify does not know the dashboard's player, although the player
         says it is ready: its connection to Spotify has died without it
-        noticing (seen 2026-11-19 after three days up: play had nowhere to
-        start music). Have it sign in afresh. Returns its new device id once
-        Spotify lists it, or None."""
+        noticing. Either Spotify no longer lists it (seen 2026-11-19 after
+        three days up: play had nowhere to start music), or it still lists
+        it and answers 404 when told to play there (2026-11-20, after four
+        and a half hours). Have it sign in afresh. Returns its new device id
+        once Spotify lists it, or None."""
         if not self.reconnect_player:
             return None
-        self.note("spotify: the dashboard's player is missing from Spotify's devices; reconnecting it")
+        self.note(f"spotify: the dashboard's player {why}; reconnecting it")
         device_id = self.reconnect_player()
         for _ in range(LISTED_TRIES if device_id else 0):
             listed = self._listed_devices()
@@ -735,6 +742,8 @@ class Spotify:
 
     # -------------------------------------------------------------- controls
 
+    LOST = "The dashboard's player lost its connection to Spotify and is starting again. Try in a minute."
+
     def _pick_device(self) -> tuple[dict | None, str]:
         """The device to start music on, or why there is none."""
         devices = self._listed_devices()
@@ -749,8 +758,7 @@ class Spotify:
             device_id = self._reconnect_local()
             if device_id:
                 return {"id": device_id}, ""
-            return None, ("The dashboard's player lost its connection to Spotify and is starting again. "
-                          "Try in a minute.")
+            return None, self.LOST
         # Without the dashboard's own player, only start music on a device that was
         # chosen on purpose. Never fall back to the Hub's own Spotify app or a
         # random device: that would switch the Hub's screen or play elsewhere.
@@ -767,31 +775,49 @@ class Spotify:
         device, why_not = self._pick_device()
         if device is None:
             return False, why_not
+        return self._on_dashboard(device["id"], lambda device_id: self._resume_on(device_id, fresh))
+
+    def _on_dashboard(self, device_id: str, start) -> tuple[bool, str]:
+        """Start music with `start(device_id)`, which returns Spotify's
+        status and answer. A 404 for the dashboard's own player means Spotify
+        cannot find it although it lists it: the player signs in afresh and
+        the music is started on the device it becomes."""
+        status, payload = start(device_id)
+        if status == 404 and device_id == self._local_id:
+            device_id = self._reconnect_local("is listed by Spotify but cannot be found (404)")
+            if not device_id:
+                return False, self.LOST
+            status, payload = start(device_id)
+        if status in (200, 202, 204):
+            return True, ""
+        return False, payload if isinstance(payload, str) else self._reason(status, payload)
+
+    def _resume_on(self, device_id: str, fresh: bool) -> tuple[int, dict | str | None]:
+        """Resume on one device. Returns Spotify's status and answer; the
+        answer is a message instead when there is nothing to resume."""
         if not fresh:
-            status, _ = self._api("PUT", "/me/player", body={"device_ids": [device["id"]], "play": True})
+            status, _ = self._api("PUT", "/me/player", body={"device_ids": [device_id], "play": True})
             if status in (200, 202, 204):
                 time.sleep(1.5)
                 _, p = self._api("GET", "/me/player")
                 if p and p.get("is_playing"):
-                    return True, ""
+                    return 204, None
         self._last_at = 0  # look again: what was played last may have changed
         last = self._last_played()
         if not last or not last.get("uri"):
             if self._last_refused and self._refused_until - time.time() > SHORT_WAIT:
-                return False, (f"Spotify won't say what played last until {self._when(self._refused_until)}. "
-                               "Pick something from your playlists.")
+                return 0, (f"Spotify won't say what played last until {self._when(self._refused_until)}. "
+                           "Pick something from your playlists.")
             if self._last_refused:
-                return False, self._reason(429, None)
-            return False, "Nothing to resume yet. Play something on Spotify once."
+                return 0, self._reason(429, None)
+            return 0, "Nothing to resume yet. Play something on Spotify once."
         body = self._play_body(last)
-        status, payload = self._api("PUT", "/me/player/play", {"device_id": device["id"]}, body)
+        status, payload = self._api("PUT", "/me/player/play", {"device_id": device_id}, body)
         if status not in (200, 202, 204) and "context_uri" in body:
             status, payload = self._api(
-                "PUT", "/me/player/play", {"device_id": device["id"]}, {"uris": [last["uri"]]}
+                "PUT", "/me/player/play", {"device_id": device_id}, {"uris": [last["uri"]]}
             )
-        if status in (200, 202, 204):
-            return True, ""
-        return False, self._reason(status, payload)
+        return status, payload
 
     def _reason(self, status: int, payload) -> str:
         message = ((payload or {}).get("error") or {}).get("message") if isinstance(payload, dict) else ""
@@ -820,8 +846,8 @@ class Spotify:
             body = {"uris": uris}
         else:
             body = {"context_uri": uri}
-        status, payload = self._api("PUT", "/me/player/play", {"device_id": device_id}, body)
-        return (True, "") if status in (200, 202, 204) else (False, self._reason(status, payload))
+        return self._on_dashboard(
+            device_id, lambda device_id: self._api("PUT", "/me/player/play", {"device_id": device_id}, body))
 
     def command(self, action: str, value=None) -> tuple[bool, str]:
         if not self.connected:
